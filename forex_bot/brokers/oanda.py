@@ -1,24 +1,22 @@
 import json
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from forex_bot.config import BrokerConfig
+from forex_bot.brokers.base import BrokerConfigError, MarketSnapshot
 from forex_bot.models import Candle, InstrumentSpec, Timeframe
 
 
-class OandaConfigError(ValueError):
+class OandaConfigError(BrokerConfigError):
     pass
 
 
-@dataclass(frozen=True)
-class OandaMarketSnapshot:
-    candles: list[Candle]
-    instrument: InstrumentSpec
-    spread_pips: Decimal
+class OandaConnectionError(BrokerConfigError):
+    pass
 
 
 class OandaClient:
@@ -26,14 +24,15 @@ class OandaClient:
         self.config = config
         self.timeout_seconds = timeout_seconds
 
-    def get_market_snapshot(self, symbol: str, granularity: Timeframe = Timeframe.H1, count: int = 200) -> OandaMarketSnapshot:
+    def get_market_snapshot(self, symbol: str, granularity: Timeframe = Timeframe.H1, count: int = 200) -> MarketSnapshot:
         self._require_read_credentials()
         candles = self.get_candles(symbol=symbol, granularity=granularity, count=count)
         spread_pips = self.get_spread_pips(symbol)
-        return OandaMarketSnapshot(
+        return MarketSnapshot(
             candles=candles,
             instrument=instrument_spec_for(symbol),
             spread_pips=spread_pips,
+            provider="oanda",
         )
 
     def get_candles(self, symbol: str, granularity: Timeframe = Timeframe.H1, count: int = 200) -> list[Candle]:
@@ -87,14 +86,19 @@ class OandaClient:
             },
             method="GET",
         )
-        with urlopen(request, timeout=self.timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            raise OandaConnectionError(f"OANDA API request failed with HTTP {error.code}") from error
+        except URLError as error:
+            raise OandaConnectionError(f"OANDA API request failed: {error.reason}") from error
 
     def _require_read_credentials(self) -> None:
         missing = []
-        if not self.config.account_id:
+        if not self.config.account_id or self.config.account_id.startswith("your_"):
             missing.append("OANDA_ACCOUNT_ID")
-        if not self.config.token:
+        if not self.config.token or self.config.token.startswith("your_"):
             missing.append("OANDA_TOKEN")
         if missing:
             joined = ", ".join(missing)

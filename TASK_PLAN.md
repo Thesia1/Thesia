@@ -487,7 +487,7 @@ Goal: safely connect to broker data without any order-writing capability.
 
 Tasks:
 
-- Define broker protocol/interface.
+- ~~Define broker protocol/interface.~~
 - Methods:
   - get account summary
   - get instruments
@@ -498,12 +498,18 @@ Tasks:
 
 Deliverables:
 
-- `forex_bot/brokers/base.py`
+- ~~`forex_bot/brokers/base.py`~~
 - tests with fake broker
 
 Acceptance:
 
-- Strategy and risk code depend on the interface, not OANDA directly.
+- ~~Strategy and risk code depend on the interface, not OANDA directly.~~
+
+Review:
+
+- A shared broker interface now exists.
+- OANDA is behind the interface.
+- FOREX.com has a scaffold adapter that fails clearly until API access and endpoint behavior are confirmed.
 
 ### 6.2 OANDA Client
 
@@ -529,9 +535,33 @@ Acceptance:
 Review:
 
 - The OANDA client currently supports read-only candle and spread fetches.
-- The normal CLI scan path now uses OANDA by default.
+- The normal CLI scan path now uses the configured broker provider.
 - Fixture scans require `--source fixture`, so canned data is no longer silently presented as the normal result.
 - Remaining work: retry policy, richer error handling, instrument metadata from broker, and real credential smoke testing.
+
+### 6.4 FOREX.com Adapter
+
+Tasks:
+
+- ~~Add FOREX.com adapter scaffold.~~
+- ~~Add FOREX.com credentials to `.env.example`.~~
+- ~~Add provider selection with `BROKER_PROVIDER=forex_com`.~~
+- Confirm REST API enablement with FOREX.com support.
+- Confirm demo endpoint.
+- Confirm authentication payload.
+- Implement read-only market data.
+- Implement spread calculation.
+- Implement open position listing.
+
+Deliverables:
+
+- ~~`forex_bot/brokers/forex_com.py`~~
+- FOREX.com mocked response tests after endpoint format is confirmed
+
+Acceptance:
+
+- ~~FOREX.com adapter never pretends to work before credentials/API details are confirmed.~~
+- Default broker provider remains configurable.
 
 ### 6.3 OANDA Candle Sync
 

@@ -42,7 +42,16 @@ Run a scan using OANDA read-only market data:
 python3 -m forex_bot scan --pair EUR_USD
 ```
 
-This requires `OANDA_ACCOUNT_ID` and `OANDA_TOKEN` in your shell environment or local `.env`.
+This uses `BROKER_PROVIDER=oanda` by default and requires `OANDA_ACCOUNT_ID` and `OANDA_TOKEN` in your shell environment or local `.env`.
+
+Run with a specific provider:
+
+```bash
+python3 -m forex_bot scan --pair EUR_USD --broker-provider oanda
+python3 -m forex_bot scan --pair EUR_USD --broker-provider forex_com
+```
+
+FOREX.com support is scaffolded. It will fail clearly until REST API access, app key, and endpoint behavior are confirmed for the account.
 
 Run the deterministic fixture smoke test explicitly:
 

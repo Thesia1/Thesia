@@ -24,7 +24,7 @@ Already present:
 
 ### Broker and Execution
 
-Primary broker path: OANDA v20 REST API.
+Primary broker path for first full implementation: OANDA v20 REST API.
 
 Rationale:
 
@@ -42,6 +42,7 @@ References:
 
 Secondary broker paths:
 
+- FOREX.com REST API once account API access, app key, and endpoint docs are confirmed.
 - MetaTrader 5 later if the user wants broker flexibility.
 - Interactive Brokers later if multi-asset support becomes important.
 
@@ -204,6 +205,21 @@ Everything that can affect a live trade must be persisted.
 
 ## Broker Implementation Plan
 
+### Broker Adapter Interface
+
+Implement all broker access behind a shared interface.
+
+Initial providers:
+
+- OANDA
+- FOREX.com scaffold
+
+Rules:
+
+- The strategy engine must not know which broker is used.
+- The risk gate must receive normalized instrument/account data.
+- The execution engine must use broker-specific adapters only through the shared interface.
+
 ### OANDA Adapter
 
 Implement:
@@ -229,6 +245,26 @@ Safety rules:
 - Never infer live mode from environment accidentally.
 - Every order must include a client order ID.
 - Every order must be linked to a strategy decision ID.
+
+### FOREX.com Adapter
+
+Implement after REST API credentials and endpoint behavior are confirmed.
+
+Known requirements:
+
+- Username
+- Password
+- App key
+- Account API enablement may be required by FOREX.com support
+
+Initial scope:
+
+- read-only account status
+- read-only market data
+- spread calculation
+- open position listing
+
+Write/execution support comes only after read-only behavior is tested.
 
 ### Broker State Reconciliation
 
@@ -776,4 +812,3 @@ Definition of done:
 - Bot produces a structured strategy decision.
 - Risk gate approves or rejects the candidate.
 - No broker order code is active yet.
-

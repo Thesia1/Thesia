@@ -2,7 +2,9 @@ from decimal import Decimal
 import unittest
 from unittest.mock import patch
 
-from forex_bot.brokers.oanda import OandaClient, OandaConfigError, instrument_spec_for, to_oanda_instrument
+from urllib.error import URLError
+
+from forex_bot.brokers.oanda import OandaClient, OandaConfigError, OandaConnectionError, instrument_spec_for, to_oanda_instrument
 from forex_bot.config import BrokerConfig
 from forex_bot.models import BrokerEnvironment, Timeframe
 
@@ -59,7 +61,21 @@ class OandaClientTest(unittest.TestCase):
         self.assertEqual(snapshot.candles[0].close, Decimal("1.1005"))
         self.assertEqual(snapshot.spread_pips, Decimal("2"))
 
+    def test_network_error_is_wrapped(self):
+        client = OandaClient(
+            BrokerConfig(
+                environment=BrokerEnvironment.PRACTICE,
+                account_id="account",
+                token="token",
+            )
+        )
+
+        with patch("forex_bot.brokers.oanda.urlopen", side_effect=URLError("dns failed")):
+            with self.assertRaises(OandaConnectionError) as context:
+                client.get_candles("EUR_USD")
+
+        self.assertIn("OANDA API request failed", str(context.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
-

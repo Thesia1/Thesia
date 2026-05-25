@@ -73,3 +73,17 @@ Work completed:
 Review:
 
 - This fixes the hardcoded-output problem. The default scan now either uses OANDA credentials or returns a clear configuration error. Fixture output is still useful for development, but it has to be requested explicitly.
+
+### Step 7: Multi-Broker Provider Scaffold
+
+Work completed:
+
+- Added a shared broker interface.
+- Added `BROKER_PROVIDER` config support.
+- Kept OANDA as the first read-only implementation.
+- Added a FOREX.com scaffold adapter that fails clearly until REST API access is confirmed.
+- Added tests for the broker factory and FOREX.com scaffold behavior.
+
+Review:
+
+- This lets the bot support both OANDA and FOREX.com without making the strategy engine broker-specific. FOREX.com is not implemented as a working data adapter yet; it is safely scaffolded so we can add it once account API credentials, app key, and endpoint docs are available.

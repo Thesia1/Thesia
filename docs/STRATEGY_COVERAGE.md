@@ -54,7 +54,9 @@ BUY only
 Current data sources:
 
 ```text
-OANDA read-only market data by default
+configured broker provider read-only market data by default
+OANDA read-only adapter implemented first
+FOREX.com adapter scaffolded, not fully implemented yet
 local fixture candles only when --source fixture is passed
 ```
 

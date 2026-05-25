@@ -6,10 +6,12 @@ from decimal import Decimal
 from enum import Enum
 from sys import stderr, exit
 
-from forex_bot.brokers.oanda import OandaClient, OandaConfigError, instrument_spec_for, to_oanda_instrument
+from forex_bot.brokers.base import BrokerConfigError
+from forex_bot.brokers.factory import create_broker_client
+from forex_bot.brokers.oanda import instrument_spec_for, to_oanda_instrument
 from forex_bot.config import load_config_from_env
 from forex_bot.fixtures import load_fixture_candles
-from forex_bot.models import Timeframe
+from forex_bot.models import BrokerProvider, Timeframe
 from forex_bot.strategy import StrategyContext
 from forex_bot.strategy.fresh_strong_zone import FreshStrongZoneContinuation
 
@@ -19,21 +21,34 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     scan = subparsers.add_parser("scan")
     scan.add_argument("--pair", default="EUR_USD")
-    scan.add_argument("--source", choices=["oanda", "fixture"], default="oanda")
+    scan.add_argument("--source", choices=["broker", "fixture"], default="broker")
+    scan.add_argument("--broker-provider", choices=[provider.value for provider in BrokerProvider], default=None)
     scan.add_argument("--granularity", choices=[timeframe.value for timeframe in Timeframe], default=Timeframe.H1.value)
     scan.add_argument("--count", type=int, default=200)
     args = parser.parse_args()
 
     if args.command == "scan":
         try:
-            decision = scan_pair(args.pair, source=args.source, granularity=Timeframe(args.granularity), count=args.count)
-        except OandaConfigError as error:
-            print(json.dumps({"error": str(error), "source": "oanda"}, indent=2), file=stderr)
+            decision = scan_pair(
+                args.pair,
+                source=args.source,
+                broker_provider=BrokerProvider(args.broker_provider) if args.broker_provider else None,
+                granularity=Timeframe(args.granularity),
+                count=args.count,
+            )
+        except BrokerConfigError as error:
+            print(json.dumps({"error": str(error), "source": args.source}, indent=2), file=stderr)
             exit(2)
         print(json.dumps(to_primitive(decision), indent=2, sort_keys=True))
 
 
-def scan_pair(pair: str, source: str = "oanda", granularity: Timeframe = Timeframe.H1, count: int = 200):
+def scan_pair(
+    pair: str,
+    source: str = "broker",
+    broker_provider: BrokerProvider | None = None,
+    granularity: Timeframe = Timeframe.H1,
+    count: int = 200,
+):
     normalized_pair = to_oanda_instrument(pair)
     if source == "fixture":
         candles = [candle for candle in load_fixture_candles("eur_usd_fresh_strong_zone.json") if candle.symbol == normalized_pair]
@@ -41,7 +56,30 @@ def scan_pair(pair: str, source: str = "oanda", granularity: Timeframe = Timefra
         spread_pips = Decimal("0.8")
     else:
         config = load_config_from_env()
-        snapshot = OandaClient(config.broker).get_market_snapshot(symbol=normalized_pair, granularity=granularity, count=count)
+        if broker_provider is not None:
+            config = config.__class__(
+                mode=config.mode,
+                broker=config.broker.__class__(
+                    provider=broker_provider,
+                    environment=config.broker.environment,
+                    account_id=config.broker.account_id,
+                    token=config.broker.token,
+                    username=config.broker.username,
+                    password=config.broker.password,
+                    app_key=config.broker.app_key,
+                    practice_url=config.broker.practice_url,
+                    live_url=config.broker.live_url,
+                    forex_com_demo_url=config.broker.forex_com_demo_url,
+                    forex_com_live_url=config.broker.forex_com_live_url,
+                ),
+                risk=config.risk,
+                explicit_live_enabled=config.explicit_live_enabled,
+            )
+        snapshot = create_broker_client(config.broker).get_market_snapshot(
+            symbol=normalized_pair,
+            granularity=granularity,
+            count=count,
+        )
         candles = snapshot.candles
         instrument = snapshot.instrument
         spread_pips = snapshot.spread_pips

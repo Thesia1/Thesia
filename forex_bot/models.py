@@ -18,6 +18,11 @@ class BrokerEnvironment(str, Enum):
     LIVE = "live"
 
 
+class BrokerProvider(str, Enum):
+    OANDA = "oanda"
+    FOREX_COM = "forex_com"
+
+
 class Direction(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
