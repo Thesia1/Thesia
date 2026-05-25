@@ -30,15 +30,42 @@ References:
 
 ## Core Principle
 
-The agent can advise, classify, explain, and veto.
+The bot supports a two-way operating approach:
 
-The agent cannot:
+1. Human-assisted mode, where the agent proposes actions and waits for approval.
+2. Autonomous mode, where the agent can trigger approved actions after the user enables the live switch.
 
-- Create orders directly.
-- Override risk limits.
-- Increase position size.
-- Trade without deterministic strategy confirmation.
-- Trade when broker state is uncertain.
+The live switch removes the human confirmation step. It does not remove the deterministic strategy, risk, execution, and broker-state checks.
+
+The agent can:
+
+- Ask the strategy engine to evaluate markets.
+- Ask the risk gate to review a trade candidate.
+- Ask the execution engine to place, modify, or close an order after approval from the risk gate.
+- Pause trading when conditions are unclear or abnormal.
+- Resume trading when configured safety conditions are restored.
+- Explain every decision after it acts.
+
+The agent cannot bypass these hard boundaries:
+
+- It cannot call the broker directly.
+- It cannot override risk limits.
+- It cannot increase position size beyond the risk gate result.
+- It cannot trade without deterministic strategy confirmation.
+- It cannot trade when broker state is uncertain.
+
+In autonomous mode, the agent still performs the full action loop:
+
+```text
+observe market
+-> request deterministic strategy evaluation
+-> request risk approval
+-> request execution
+-> reconcile broker state
+-> log and explain result
+```
+
+The key distinction is that execution approval comes from the configured autonomy switch plus system checks, not from a manual click for each trade.
 
 ## Live System Modules
 
@@ -170,6 +197,7 @@ Allowed uses:
 - Detect news or abnormal conditions.
 - Produce daily and weekly reports.
 - Recommend pausing, never force continuing.
+- In autonomous mode, request execution of risk-approved strategy candidates.
 
 Not allowed:
 
@@ -267,6 +295,29 @@ Requirements:
 - Max one open trade at first.
 - Automatic daily shutdown after win/loss threshold.
 
+## Autonomy Switch
+
+The dashboard must expose explicit operating modes:
+
+- `OFF`: no scanning, no execution.
+- `WATCH`: scan and explain only.
+- `ASSISTED`: propose trades, wait for human approval.
+- `AUTONOMOUS_PAPER`: place practice-account trades without human approval.
+- `AUTONOMOUS_LIVE`: place live trades without human approval after all gates pass.
+
+Mode transitions must be logged.
+
+`AUTONOMOUS_LIVE` requires:
+
+- Broker connected and reconciled.
+- Risk gate active.
+- Strategy spec active.
+- Daily and weekly kill switches active.
+- Max pair exposure configured.
+- Human explicitly enabled live mode.
+
+The switch authorizes the execution engine to act on valid, risk-approved trade candidates. It never authorizes the agent to ignore the strategy, risk gate, or broker reconciliation.
+
 ## First Useful Live Version
 
 The first useful version should not try to trade every setup from the notes.
@@ -283,4 +334,3 @@ Higher-timeframe supply/demand alignment
 ```
 
 Only after that works should the bot add SNRC, Hybrid, QML/QMC/QMM, Blindspot, CLAB, and CK confirmations.
-
