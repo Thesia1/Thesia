@@ -509,12 +509,12 @@ Acceptance:
 
 Tasks:
 
-- Add OANDA HTTP client.
-- Support practice URL by default.
-- Load token from environment.
+- ~~Add OANDA HTTP client.~~
+- ~~Support practice URL by default.~~
+- ~~Load token from environment.~~
 - Add request timeout.
 - Add retry policy for safe read-only calls.
-- Add response parsing.
+- ~~Add response parsing.~~
 
 Deliverables:
 
@@ -523,8 +523,15 @@ Deliverables:
 
 Acceptance:
 
-- No live URL is used unless explicitly configured.
-- Tests do not require real credentials.
+- ~~No live URL is used unless explicitly configured.~~
+- ~~Tests do not require real credentials.~~
+
+Review:
+
+- The OANDA client currently supports read-only candle and spread fetches.
+- The normal CLI scan path now uses OANDA by default.
+- Fixture scans require `--source fixture`, so canned data is no longer silently presented as the normal result.
+- Remaining work: retry policy, richer error handling, instrument metadata from broker, and real credential smoke testing.
 
 ### 6.3 OANDA Candle Sync
 

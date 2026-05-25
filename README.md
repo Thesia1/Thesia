@@ -36,11 +36,18 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 ## CLI
 
-Run the current fixture-backed scan:
+Run a scan using OANDA read-only market data:
 
 ```bash
 python3 -m forex_bot scan --pair EUR_USD
 ```
 
-The CLI currently uses local fixture data. It does not connect to a broker or place orders.
+This requires `OANDA_ACCOUNT_ID` and `OANDA_TOKEN` in your shell environment or local `.env`.
 
+Run the deterministic fixture smoke test explicitly:
+
+```bash
+python3 -m forex_bot scan --pair EUR_USD --source fixture
+```
+
+The CLI does not place orders.

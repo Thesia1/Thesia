@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
@@ -23,7 +25,16 @@ class ConfigTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_config_from_env()
 
+    def test_config_loads_env_file_without_requiring_shell_exports(self):
+        with TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text("OANDA_ACCOUNT_ID=abc123\nOANDA_TOKEN=secret\n")
+            with patch.dict(os.environ, {}, clear=True):
+                config = load_config_from_env(env_file)
+
+        self.assertEqual(config.broker.account_id, "abc123")
+        self.assertEqual(config.broker.token, "secret")
+
 
 if __name__ == "__main__":
     unittest.main()
-

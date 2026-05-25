@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from decimal import Decimal
 from os import environ
+from pathlib import Path
 
 from forex_bot.models import BotMode, BrokerEnvironment
 
@@ -41,24 +42,48 @@ class BotConfig:
             raise ValueError("AUTONOMOUS_LIVE requires live broker environment")
 
 
-def load_config_from_env() -> BotConfig:
-    mode = BotMode(environ.get("THESIA_MODE", BotMode.WATCH.value))
-    environment = BrokerEnvironment(environ.get("OANDA_ENVIRONMENT", BrokerEnvironment.PRACTICE.value))
-    explicit_live_enabled = environ.get("THESIA_ENABLE_LIVE", "").lower() == "true"
+def load_config_from_env(env_file: str | Path | None = ".env") -> BotConfig:
+    values = _load_env_values(env_file)
+
+    mode = BotMode(_get_config_value(values, "THESIA_MODE", BotMode.WATCH.value))
+    environment = BrokerEnvironment(_get_config_value(values, "OANDA_ENVIRONMENT", BrokerEnvironment.PRACTICE.value))
+    explicit_live_enabled = _get_config_value(values, "THESIA_ENABLE_LIVE", "").lower() == "true"
 
     config = BotConfig(
         mode=mode,
         broker=BrokerConfig(
             environment=environment,
-            account_id=environ.get("OANDA_ACCOUNT_ID", ""),
-            token=environ.get("OANDA_TOKEN", ""),
+            account_id=_get_config_value(values, "OANDA_ACCOUNT_ID", ""),
+            token=_get_config_value(values, "OANDA_TOKEN", ""),
         ),
         risk=RiskConfig(
-            risk_percent=Decimal(environ.get("THESIA_RISK_PERCENT", "0.0025")),
-            max_daily_loss_percent=Decimal(environ.get("THESIA_MAX_DAILY_LOSS_PERCENT", "0.02")),
-            max_weekly_loss_percent=Decimal(environ.get("THESIA_MAX_WEEKLY_LOSS_PERCENT", "0.05")),
+            risk_percent=Decimal(_get_config_value(values, "THESIA_RISK_PERCENT", "0.0025")),
+            max_daily_loss_percent=Decimal(_get_config_value(values, "THESIA_MAX_DAILY_LOSS_PERCENT", "0.02")),
+            max_weekly_loss_percent=Decimal(_get_config_value(values, "THESIA_MAX_WEEKLY_LOSS_PERCENT", "0.05")),
         ),
         explicit_live_enabled=explicit_live_enabled,
     )
     config.validate()
     return config
+
+
+def _get_config_value(values: dict[str, str], key: str, default: str) -> str:
+    return environ.get(key, values.get(key, default))
+
+
+def _load_env_values(env_file: str | Path | None) -> dict[str, str]:
+    if env_file is None:
+        return {}
+
+    path = Path(env_file)
+    if not path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values

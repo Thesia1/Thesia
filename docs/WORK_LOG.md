@@ -60,3 +60,16 @@ Review:
 
 - The CLI is not connected to OANDA yet. That is by design: the first sprint proves the local decision pipeline before broker code exists.
 
+### Step 6: Remove Accidental Fixture Default
+
+Work completed:
+
+- Changed the default `scan` command from fixture data to OANDA read-only market data.
+- Kept fixture scans available only through `--source fixture`.
+- Added `.env` file loading so local credentials do not need to be exported manually.
+- Added an OANDA read-only adapter for candles and current spread.
+- Added tests for OANDA response parsing and CLI pair normalization.
+
+Review:
+
+- This fixes the hardcoded-output problem. The default scan now either uses OANDA credentials or returns a clear configuration error. Fixture output is still useful for development, but it has to be requested explicitly.
