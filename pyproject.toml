@@ -1,0 +1,10 @@
+[project]
+name = "thesia-forex-bot"
+version = "0.1.0"
+description = "Live-capable agentic forex trading bot with deterministic strategy and strict risk controls."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["forex_bot*"]
+

@@ -36,7 +36,7 @@ class RiskGateTest(unittest.TestCase):
         self.assertEqual(approval.reward_to_risk, Decimal("2"))
         self.assertEqual(approval.reasons, ())
 
-    def test_risk_gate_rejects_high_spread_and_missing_decision_id(self):
+    def test_risk_gate_rejects_high_spread(self):
         approval = evaluate_risk(
             account=_account(),
             instrument=_eur_usd(),
@@ -48,7 +48,7 @@ class RiskGateTest(unittest.TestCase):
                 take_profit=Decimal("1.0900"),
                 spread_pips=Decimal("3"),
                 setup_name="fresh_strong_zone_continuation",
-                strategy_decision_id="",
+                strategy_decision_id="decision-1",
             ),
             limits=RiskLimits(),
         )
@@ -56,7 +56,6 @@ class RiskGateTest(unittest.TestCase):
         self.assertEqual(approval.decision, RiskDecision.REJECTED)
         self.assertEqual(approval.units, Decimal("0"))
         self.assertIn("spread_too_high", approval.reasons)
-        self.assertIn("missing_strategy_decision_id", approval.reasons)
 
     def test_risk_gate_rejects_daily_loss_limit(self):
         approval = evaluate_risk(

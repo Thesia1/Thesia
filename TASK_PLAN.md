@@ -910,28 +910,77 @@ Sprint goal: produce a working local strategy decision pipeline without broker o
 
 Tasks:
 
-1. Add `README.md`.
-2. Add `pyproject.toml`.
-3. Add `forex_bot/config.py`.
-4. Expand domain models.
-5. Add `forex_bot/market_data.py`.
-6. Add `forex_bot/indicators.py`.
-7. Add ATR tests.
-8. Add candle metric tests.
-9. Add swing detection.
-10. Add swing detection tests.
-11. Add strategy framework.
-12. Add base candle detector.
-13. Add departure candle detector.
-14. Add supply/demand zone model.
-15. Add first fixture candle set.
-16. Wire strategy candidate into the existing risk gate.
-17. Add CLI stub: `python3 -m forex_bot scan --pair EUR_USD`.
+1. ~~Add `README.md`.~~
+2. ~~Add `pyproject.toml`.~~
+3. ~~Add `forex_bot/config.py`.~~
+4. ~~Expand domain models.~~
+5. ~~Add `forex_bot/market_data.py`.~~
+6. ~~Add `forex_bot/indicators.py`.~~
+7. ~~Add ATR tests.~~
+8. ~~Add candle metric tests.~~
+9. ~~Add swing detection.~~
+10. ~~Add swing detection tests.~~
+11. ~~Add strategy framework.~~
+12. ~~Add base candle detector.~~
+13. ~~Add departure candle detector.~~
+14. ~~Add supply/demand zone model.~~
+15. ~~Add first fixture candle set.~~
+16. ~~Wire strategy candidate into the existing risk gate.~~
+17. ~~Add CLI stub: `python3 -m forex_bot scan --pair EUR_USD`.~~
 
 Definition of done:
 
-- All tests pass.
-- CLI returns a structured `NO_TRADE`, `WATCH`, or `TRADE_CANDIDATE` result using fixture data.
-- Risk gate is called for any candidate.
-- No real broker order capability exists yet.
+- ~~All tests pass.~~
+- ~~CLI returns a structured `NO_TRADE`, `WATCH`, or `TRADE_CANDIDATE` result using fixture data.~~
+- ~~Risk gate is called for any candidate.~~
+- ~~No real broker order capability exists yet.~~
 
+## Completed Work Review
+
+### First Sprint Implementation Review
+
+Completed files:
+
+- `README.md`
+- `pyproject.toml`
+- `docs/WORK_LOG.md`
+- `forex_bot/config.py`
+- `forex_bot/models.py`
+- `forex_bot/market_data.py`
+- `forex_bot/indicators.py`
+- `forex_bot/strategy/__init__.py`
+- `forex_bot/strategy/fresh_strong_zone.py`
+- `forex_bot/fixtures/eur_usd_fresh_strong_zone.json`
+- `forex_bot/__main__.py`
+- `tests/test_config.py`
+- `tests/test_models.py`
+- `tests/test_market_data.py`
+- `tests/test_indicators.py`
+- `tests/test_fresh_strong_zone.py`
+- updated `tests/test_risk_gate.py`
+
+Review:
+
+- The project now has a runnable local decision pipeline.
+- The CLI does not connect to a broker and cannot place orders, which is correct for this stage.
+- The first strategy detector is intentionally narrow: bullish fresh strong demand continuation only.
+- The detector produces rule evidence and a structured trade candidate.
+- The risk gate is called in tests for the generated candidate.
+- The next work should refine strategy realism: curve location, better zone freshness, explicit higher-timeframe context, and richer fixture coverage.
+
+Verification:
+
+```text
+python3 -m unittest discover -s tests -p 'test_*.py'
+Ran 15 tests
+OK
+```
+
+CLI verification:
+
+```text
+python3 -m forex_bot scan --pair EUR_USD
+state: TRADE_CANDIDATE
+direction: BUY
+setup: fresh_strong_zone_continuation
+```
