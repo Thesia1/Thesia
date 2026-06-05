@@ -145,6 +145,67 @@ class ExecutionProviderTest(unittest.TestCase):
         self.assertIn("recommended_actions", diagnostics.probe_details)
         self.assertTrue(any("same Windows user" in action for action in diagnostics.probe_details["recommended_actions"]))
 
+    def test_mt5_probe_explains_missing_terminal_path(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                mt5_timeout_ms=60000,
+            )
+        )
+        mt5 = Mock()
+        mt5.initialize.return_value = False
+        mt5.last_error.return_value = (
+            -10003,
+            r"IPC initialize failed, Process create failed 'C:\Program Files\Deriv MT5\terminal64.exe'",
+        )
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            diagnostics = client.diagnose(probe_terminal=True, symbols=("EUR_USD",))
+
+        self.assertFalse(diagnostics.reconciliation_ok)
+        self.assertFalse(diagnostics.can_place_orders)
+        self.assertIn("Process create failed", diagnostics.probe_error)
+        self.assertEqual(diagnostics.probe_details["timeout_ms"], 60000)
+        self.assertTrue(diagnostics.probe_details["mt5_path_present"])
+        self.assertFalse(diagnostics.probe_details["mt5_path_exists"])
+        self.assertTrue(any("terminal64.exe location" in action for action in diagnostics.probe_details["recommended_actions"]))
+
+    def test_mt5_probe_reports_missing_reconciliation_inputs(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+            )
+        )
+        mt5 = Mock()
+        mt5.initialize.return_value = True
+        mt5.account_info.return_value = _named(login=12345, company="Deriv", server="Deriv-Live", currency="USD")
+        mt5.positions_get.return_value = None
+        mt5.orders_get.return_value = []
+        mt5.symbol_select.return_value = True
+        mt5.symbol_info_tick.return_value = None
+        mt5.symbol_info.return_value = _named(trade_mode=1)
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            diagnostics = client.diagnose(probe_terminal=True, symbols=("EUR_USD",))
+
+        self.assertFalse(diagnostics.reconciliation_ok)
+        self.assertFalse(diagnostics.can_place_orders)
+        self.assertIn("did not verify every reconciliation input", diagnostics.probe_error)
+        self.assertEqual(
+            diagnostics.probe_details["missing_reconciliation_inputs"],
+            ["positions", "account_equity", "account_margin", "EURUSD_tick", "EUR_USD_tick"],
+        )
+        self.assertTrue(any("Market Watch" in action for action in diagnostics.probe_details["recommended_actions"]))
+
     def test_mt5_probe_can_enable_order_placement_when_switch_is_enabled(self):
         client = create_execution_client(
             ExecutionConfig(

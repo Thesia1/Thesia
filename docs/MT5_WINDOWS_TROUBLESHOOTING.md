@@ -2,6 +2,32 @@
 
 This project uses OANDA for read-only market data and Deriv MT5 for order execution. Live order submission requires both a valid strategy/risk decision and a reconciled Deriv MT5 terminal session.
 
+## `(-10003, "IPC initialize failed, Process create failed ...")`
+
+This error means Python tried to start the configured MT5 terminal executable, but Windows could not find or launch it. If the probe reports `"mt5_path_exists": false`, the configured `MT5_PATH` is wrong for that machine.
+
+Find the real path on Windows:
+
+1. Open the Start menu and search for Deriv MT5.
+2. Right-click the Deriv MT5 app and choose `Open file location`.
+3. Right-click the Deriv MT5 shortcut and choose `Properties`.
+4. Copy the `Target` path.
+5. Use that exact path for `MT5_PATH`.
+
+Common locations include:
+
+```dotenv
+MT5_PATH=C:\Program Files\Deriv MT5\terminal64.exe
+MT5_PATH=C:\Program Files (x86)\Deriv MT5\terminal64.exe
+MT5_PATH=C:\Users\YourWindowsUser\AppData\Roaming\MetaQuotes\Terminal\...\terminal64.exe
+```
+
+After updating `.env`, rerun:
+
+```powershell
+py -m forex_bot doctor mt5 --environment live --probe --symbols EUR_USD
+```
+
 ## `(-10005, 'IPC timeout')`
 
 This error means the MetaTrader5 Python bridge could not establish local IPC communication with the MT5 terminal before the timeout. It is a terminal-connection problem, not a strategy approval.

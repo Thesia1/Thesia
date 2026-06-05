@@ -138,6 +138,12 @@ Run a multi-pair scan:
 python3 -m forex_bot scan --pairs EUR_USD,GBP_USD,USD_JPY --count 200
 ```
 
+Include a live Deriv MT5 readiness probe in scan output when you want execution status beside the market scan:
+
+```bash
+python3 -m forex_bot scan --pairs EUR_USD,GBP_USD,USD_JPY --paper-preview --probe-execution
+```
+
 Run a scan with optional higher-timeframe confirmation:
 
 ```bash

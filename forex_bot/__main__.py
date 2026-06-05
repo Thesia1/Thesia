@@ -97,6 +97,7 @@ def main() -> None:
     scan.add_argument("--paper-preview", action="store_true")
     scan.add_argument("--paper-equity", default="10000")
     scan.add_argument("--paper-margin-available", default="10000")
+    scan.add_argument("--probe-execution", action="store_true")
     scan.add_argument("--log-path", default="")
 
     execute = subparsers.add_parser("execute")
@@ -134,6 +135,7 @@ def main() -> None:
                 paper_preview=args.paper_preview,
                 paper_equity=Decimal(args.paper_equity),
                 paper_margin_available=Decimal(args.paper_margin_available),
+                probe_execution=args.probe_execution,
             )
             if args.log_path:
                 persist_scan_result(response, args.log_path)
@@ -200,6 +202,7 @@ def scan_pairs_response(
     paper_preview: bool = False,
     paper_equity: Decimal = Decimal("10000"),
     paper_margin_available: Decimal = Decimal("10000"),
+    probe_execution: bool = False,
 ):
     scans = tuple(
         scan_pair_response(
@@ -213,6 +216,7 @@ def scan_pairs_response(
             paper_preview=paper_preview,
             paper_equity=paper_equity,
             paper_margin_available=paper_margin_available,
+            probe_execution=probe_execution,
         )
         for pair in pairs
     )
@@ -237,6 +241,7 @@ def scan_pair_response(
     paper_preview: bool = False,
     paper_equity: Decimal = Decimal("10000"),
     paper_margin_available: Decimal = Decimal("10000"),
+    probe_execution: bool = False,
 ) -> ScanResponse:
     normalized_pair = to_oanda_instrument(pair)
     provider = "local_fixture"
@@ -346,7 +351,14 @@ def scan_pair_response(
             candles=candles,
             spread_pips=spread_pips,
         ),
-        execution=create_execution_client(config.execution).diagnose() if config is not None else None,
+        execution=(
+            create_execution_client(config.execution).diagnose(
+                probe_terminal=probe_execution,
+                symbols=(normalized_pair,) if probe_execution else (),
+            )
+            if config is not None
+            else None
+        ),
         paper_preview=paper,
         news_blackout=news_blackout,
     )
@@ -373,6 +385,7 @@ def execute_live_response(
     risk_approval = scan.paper_preview.risk_approval if scan.paper_preview is not None else None
     execution_client = create_execution_client(config.execution)
     execution = execution_client.diagnose(probe_terminal=True, symbols=(scan.decision.symbol,))
+    scan = replace(scan, execution=execution)
     policy = evaluate_agent_autonomy(
         mode=config.mode,
         strategy_decision=scan.decision,

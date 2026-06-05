@@ -92,6 +92,21 @@ class CliTest(unittest.TestCase):
         self.assertEqual(response.tradeable_paper_count, 2)
         self.assertEqual(len(response.scans), 2)
 
+    def test_scan_response_can_probe_execution(self):
+        fake_execution = FakeExecutionClient()
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=_live_ready_config(),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=FakeBrokerClient()), patch(
+            "forex_bot.__main__.create_execution_client",
+            return_value=fake_execution,
+        ):
+            response = scan_pair_response("EUR_USD", source="broker", probe_execution=True)
+
+        self.assertTrue(response.execution.can_place_orders)
+        self.assertTrue(response.execution.reconciliation_ok)
+        self.assertEqual(fake_execution.diagnose_calls, [(True, ("EUR_USD",))])
+
     def test_paper_preview_rejects_no_trade_candidate(self):
         candles = [
             Candle(
@@ -197,6 +212,8 @@ class CliTest(unittest.TestCase):
         self.assertFalse(response.submitted)
         self.assertEqual(response.reason, "ready_but_not_submitted_without_submit_live_order")
         self.assertTrue(response.idempotency_key)
+        self.assertEqual(response.scan.execution, response.execution)
+        self.assertTrue(response.scan.execution.reconciliation_ok)
         self.assertEqual(fake_execution.submitted_requests, [])
 
     def test_execute_live_response_submits_when_requested_and_all_gates_pass(self):
@@ -236,9 +253,11 @@ class FakeExecutionClient:
     provider_name = "mt5"
 
     def __init__(self):
+        self.diagnose_calls = []
         self.submitted_requests = []
 
     def diagnose(self, probe_terminal=False, symbols=()):
+        self.diagnose_calls.append((probe_terminal, symbols))
         return ExecutionDiagnostics(
             provider="mt5",
             environment="live",

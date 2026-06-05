@@ -134,6 +134,13 @@ class Mt5ExecutionClient:
             symbols_ok = not symbols or (ticks_visible and symbol_info_visible)
             reconciliation_ok = positions_visible and orders_visible and account_equity_visible and margin_visible and symbols_ok
             can_place_orders = reconciliation_ok and self.config.order_placement_enabled
+            missing_reconciliation_inputs = _missing_reconciliation_inputs(
+                positions_visible=positions_visible,
+                orders_visible=orders_visible,
+                account_equity_visible=account_equity_visible,
+                margin_visible=margin_visible,
+                symbol_results=symbol_results,
+            )
             probe_error = "" if reconciliation_ok else "MT5 probe connected but did not verify every reconciliation input."
 
             return _replace_diagnostics(
@@ -170,6 +177,8 @@ class Mt5ExecutionClient:
                     "positions_count": len(positions) if positions is not None else None,
                     "orders_count": len(orders) if orders is not None else None,
                     "symbols": symbol_results,
+                    "missing_reconciliation_inputs": missing_reconciliation_inputs,
+                    "recommended_actions": _reconciliation_recovery_steps(missing_reconciliation_inputs),
                 },
             )
         finally:
@@ -308,20 +317,38 @@ def _initialize_failure_details(error: str, path: str, timeout_ms: int) -> dict[
     }
     if path:
         details["mt5_path_exists"] = Path(path).exists()
-    if _is_ipc_timeout(error):
+    if _is_path_launch_failure(error, path):
+        details["recommended_actions"] = _path_launch_recovery_steps(path)
+    elif _is_ipc_timeout(error):
         details["recommended_actions"] = _ipc_timeout_recovery_steps(path)
     return details
 
 
 def _initialize_failure_message(error: str, path: str) -> str:
+    if _is_path_launch_failure(error, path):
+        return " ".join(_path_launch_recovery_steps(path))
     if not _is_ipc_timeout(error):
         return "Check the MT5 login, password, server, and terminal path."
     return " ".join(_ipc_timeout_recovery_steps(path))
 
 
+def _is_path_launch_failure(error: str, path: str) -> bool:
+    normalized = error.lower()
+    return bool(path) and ("-10003" in normalized or "process create failed" in normalized)
+
+
 def _is_ipc_timeout(error: str) -> bool:
     normalized = error.lower()
     return "-10005" in normalized or "ipc timeout" in normalized
+
+
+def _path_launch_recovery_steps(path: str) -> list[str]:
+    return [
+        f"MT5_PATH does not point to an existing terminal executable: {path}",
+        "Find the real Deriv MT5 terminal64.exe location from the Windows shortcut properties.",
+        "Update MT5_PATH in .env with that exact path, then rerun the MT5 doctor probe.",
+        "If Deriv MT5 is installed under AppData instead of Program Files, use that AppData terminal64.exe path.",
+    ]
 
 
 def _ipc_timeout_recovery_steps(path: str) -> list[str]:
@@ -335,6 +362,45 @@ def _ipc_timeout_recovery_steps(path: str) -> list[str]:
         steps.insert(1, "Confirm MT5_PATH points to the exact Deriv terminal64.exe that is already open.")
     else:
         steps.insert(1, "Set MT5_PATH to the exact Deriv terminal64.exe path so Python does not attach to the wrong terminal.")
+    return steps
+
+
+def _missing_reconciliation_inputs(
+    *,
+    positions_visible: bool,
+    orders_visible: bool,
+    account_equity_visible: bool,
+    margin_visible: bool,
+    symbol_results: dict[str, dict[str, bool]],
+) -> list[str]:
+    missing = []
+    if not positions_visible:
+        missing.append("positions")
+    if not orders_visible:
+        missing.append("orders")
+    if not account_equity_visible:
+        missing.append("account_equity")
+    if not margin_visible:
+        missing.append("account_margin")
+    for symbol, result in symbol_results.items():
+        if not result["selected"]:
+            missing.append(f"{symbol}_select")
+        if not result["tick_visible"]:
+            missing.append(f"{symbol}_tick")
+        if not result["symbol_info_visible"]:
+            missing.append(f"{symbol}_symbol_info")
+    return missing
+
+
+def _reconciliation_recovery_steps(missing: list[str]) -> list[str]:
+    if not missing:
+        return []
+    steps = []
+    if any(item in missing for item in ("positions", "orders", "account_equity", "account_margin")):
+        steps.append("Confirm the Deriv MT5 live account is fully logged in and Account/Trade tabs are visible in the terminal.")
+    if any(item.endswith(("_select", "_tick", "_symbol_info")) for item in missing):
+        steps.append("Add the requested symbol to Market Watch and confirm the Deriv symbol name matches the broker terminal.")
+    steps.append("Restart Deriv MT5, then rerun the doctor probe before enabling live order placement.")
     return steps
 
 
