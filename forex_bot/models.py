@@ -23,6 +23,26 @@ class BrokerProvider(str, Enum):
     FOREX_COM = "forex_com"
 
 
+class ExecutionProvider(str, Enum):
+    OANDA = "oanda"
+    MT5 = "mt5"
+    NONE = "none"
+
+
+class NewsProvider(str, Enum):
+    TRADING_ECONOMICS = "trading_economics"
+    ALPHA_VANTAGE = "alpha_vantage"
+    MARKETAUX = "marketaux"
+    NONE = "none"
+
+
+class AgentProvider(str, Enum):
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    OPENROUTER = "openrouter"
+    NONE = "none"
+
+
 class Direction(str, Enum):
     BUY = "BUY"
     SELL = "SELL"

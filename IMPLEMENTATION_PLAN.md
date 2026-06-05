@@ -24,7 +24,9 @@ Already present:
 
 ### Broker and Execution
 
-Primary broker path for first full implementation: OANDA v20 REST API.
+Primary market-data path for first full implementation: OANDA v20 REST API.
+
+Primary execution path for the user's current account setup: Deriv MT5 through an MT5 execution adapter.
 
 Rationale:
 
@@ -32,6 +34,13 @@ Rationale:
 - Official REST endpoints for accounts, orders, trades, positions, and pricing.
 - Pricing stream available for live updates.
 - Official API comparison lists v20 REST polling rate limit as 30 requests per second.
+
+Current architecture decision:
+
+- Use OANDA for read-only candles, pricing, and spread checks.
+- Use Deriv MT5 as the future order-execution venue.
+- Keep market data and execution providers separate so Deriv MT5 credentials are never treated as OANDA API credentials.
+- MT5 execution remains disabled until the MT5 adapter, broker reconciliation, duplicate-order protection, and paper ledger are implemented.
 
 References:
 
@@ -76,12 +85,21 @@ Candidate providers:
 
 - Trading Economics API for economic calendar and live calendar stream.
 - Econoday API for economic event delivery.
+- Alpha Vantage or Marketaux as free market-news fallback sources for watch-mode context.
+
+Fallback rule:
+
+- Trading Economics remains the preferred primary calendar/news source.
+- Free fallback news can annotate market context when the primary provider is unavailable.
+- Free fallback news must not be treated as sufficient live-trading blackout approval until scheduled economic-calendar coverage is implemented and tested.
 
 References:
 
 - Trading Economics API docs: https://docs.tradingeconomics.com/
 - Trading Economics calendar streaming: https://docs.tradingeconomics.com/economic_calendar/streaming/
 - Econoday REST API docs: https://api.econoday.com/api/api.html
+- Alpha Vantage News & Sentiment docs: https://www.alphavantage.co/documentation/
+- Marketaux docs: https://www.marketaux.com/documentation
 
 ### Strategy Research
 
@@ -522,6 +540,13 @@ Expose controlled tools:
 - `summarize_account`
 - `explain_decision`
 - `generate_daily_report`
+
+LLM provider path:
+
+- Anthropic/Claude remains the preferred primary agent provider.
+- OpenRouter can be configured as a fallback router for agent testing with `OPENROUTER_MODEL=openrouter/auto`.
+- Agent provider fallback must only generate explanations, veto notes, and scenario-test output until tool permissions, risk approval, and execution controls are fully implemented.
+- LLM output cannot create strategy signals, approve risk, or submit orders.
 
 ### Agent Memory
 
