@@ -117,6 +117,34 @@ class ExecutionProviderTest(unittest.TestCase):
         self.assertFalse(diagnostics.can_place_orders)
         mt5.shutdown.assert_called_once()
 
+    def test_mt5_probe_explains_ipc_timeout_recovery(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                mt5_timeout_ms=60000,
+            )
+        )
+        mt5 = Mock()
+        mt5.initialize.return_value = False
+        mt5.last_error.return_value = (-10005, "IPC timeout")
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            diagnostics = client.diagnose(probe_terminal=True, symbols=("EUR_USD",))
+
+        self.assertFalse(diagnostics.reconciliation_ok)
+        self.assertFalse(diagnostics.can_place_orders)
+        self.assertIn("IPC timeout", diagnostics.probe_error)
+        self.assertEqual(diagnostics.probe_details["timeout_ms"], 60000)
+        self.assertTrue(diagnostics.probe_details["mt5_path_present"])
+        self.assertFalse(diagnostics.probe_details["mt5_path_exists"])
+        self.assertIn("recommended_actions", diagnostics.probe_details)
+        self.assertTrue(any("same Windows user" in action for action in diagnostics.probe_details["recommended_actions"]))
+
     def test_mt5_probe_can_enable_order_placement_when_switch_is_enabled(self):
         client = create_execution_client(
             ExecutionConfig(

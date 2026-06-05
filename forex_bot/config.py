@@ -50,6 +50,7 @@ class ExecutionConfig:
     idempotency_ledger_path: str = "data/order-ledger.jsonl"
     mt5_deviation_points: int = 20
     mt5_magic: int = 260604
+    mt5_timeout_ms: int = 60000
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,7 @@ def load_config_from_env(env_file: str | Path | None = ".env") -> BotConfig:
             idempotency_ledger_path=_get_config_value(values, "EXECUTION_IDEMPOTENCY_LEDGER_PATH", "data/order-ledger.jsonl"),
             mt5_deviation_points=int(_get_config_value(values, "MT5_DEVIATION_POINTS", "20")),
             mt5_magic=int(_get_config_value(values, "MT5_MAGIC", "260604")),
+            mt5_timeout_ms=int(_get_config_value(values, "MT5_TIMEOUT_MS", "60000")),
         ),
         risk=RiskConfig(
             risk_percent=Decimal(_get_config_value(values, "THESIA_RISK_PERCENT", "0.0025")),

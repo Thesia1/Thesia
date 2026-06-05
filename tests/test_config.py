@@ -56,6 +56,7 @@ class ConfigTest(unittest.TestCase):
                         "EXECUTION_IDEMPOTENCY_LEDGER_PATH=data/live-orders.jsonl",
                         "MT5_DEVIATION_POINTS=30",
                         "MT5_MAGIC=123456",
+                        "MT5_TIMEOUT_MS=60000",
                     ]
                 )
             )
@@ -72,6 +73,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.execution.idempotency_ledger_path, "data/live-orders.jsonl")
         self.assertEqual(config.execution.mt5_deviation_points, 30)
         self.assertEqual(config.execution.mt5_magic, 123456)
+        self.assertEqual(config.execution.mt5_timeout_ms, 60000)
 
     def test_mt5_execution_provider_is_inferred_from_mt5_credentials(self):
         with TemporaryDirectory() as temp_dir:

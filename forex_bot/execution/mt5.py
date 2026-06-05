@@ -1,5 +1,6 @@
 import platform
 from decimal import Decimal, ROUND_DOWN
+from pathlib import Path
 
 from forex_bot.config import ExecutionConfig
 from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderSubmissionRequest, OrderSubmissionResult
@@ -76,7 +77,7 @@ class Mt5ExecutionClient:
             "login": login,
             "password": self.config.mt5_password,
             "server": self.config.mt5_server,
-            "timeout": 15000,
+            "timeout": self.config.mt5_timeout_ms,
         }
         path = self.config.mt5_path.strip()
         if path:
@@ -89,7 +90,7 @@ class Mt5ExecutionClient:
             return _replace_diagnostics(
                 diagnostics,
                 probe_error=f"MT5 initialize/login failed: {error}",
-                probe_details={"last_error": error},
+                probe_details=_initialize_failure_details(error, path, self.config.mt5_timeout_ms),
             )
 
         try:
@@ -100,7 +101,7 @@ class Mt5ExecutionClient:
                     diagnostics,
                     terminal_connected=True,
                     probe_error=f"MT5 account_info failed: {error}",
-                    probe_details={"last_error": error},
+                    probe_details=_initialize_failure_details(error, path, self.config.mt5_timeout_ms),
                 )
 
             positions = mt5.positions_get()
@@ -260,12 +261,13 @@ class Mt5ExecutionClient:
             "login": login,
             "password": self.config.mt5_password,
             "server": self.config.mt5_server,
-            "timeout": 15000,
+            "timeout": self.config.mt5_timeout_ms,
         }
         path = self.config.mt5_path.strip()
         initialized = mt5.initialize(path, **initialize_kwargs) if path else mt5.initialize(**initialize_kwargs)
         if not initialized:
-            raise ExecutionProviderError(f"MT5 initialize/login failed: {_mt5_last_error(mt5)}")
+            error = _mt5_last_error(mt5)
+            raise ExecutionProviderError(f"MT5 initialize/login failed: {error}. {_initialize_failure_message(error, path)}")
 
     def _resolve_symbol_for_order(self, mt5, raw_symbol: str):
         for symbol in _mt5_symbol_candidates(raw_symbol):
@@ -296,6 +298,44 @@ def _mt5_last_error(mt5) -> str:
         return str(mt5.last_error())
     except Exception:
         return "unknown"
+
+
+def _initialize_failure_details(error: str, path: str, timeout_ms: int) -> dict[str, object]:
+    details: dict[str, object] = {
+        "last_error": error,
+        "timeout_ms": timeout_ms,
+        "mt5_path_present": bool(path),
+    }
+    if path:
+        details["mt5_path_exists"] = Path(path).exists()
+    if _is_ipc_timeout(error):
+        details["recommended_actions"] = _ipc_timeout_recovery_steps(path)
+    return details
+
+
+def _initialize_failure_message(error: str, path: str) -> str:
+    if not _is_ipc_timeout(error):
+        return "Check the MT5 login, password, server, and terminal path."
+    return " ".join(_ipc_timeout_recovery_steps(path))
+
+
+def _is_ipc_timeout(error: str) -> bool:
+    normalized = error.lower()
+    return "-10005" in normalized or "ipc timeout" in normalized
+
+
+def _ipc_timeout_recovery_steps(path: str) -> list[str]:
+    steps = [
+        "Open the Deriv MT5 terminal manually and confirm the live account is logged in before running the bot.",
+        "Run PowerShell and the Deriv MT5 terminal as the same Windows user and privilege level.",
+        "Close modal dialogs, updates, or first-run prompts inside MT5, then restart the terminal.",
+        "Increase MT5_TIMEOUT_MS if the terminal is slow to start.",
+    ]
+    if path:
+        steps.insert(1, "Confirm MT5_PATH points to the exact Deriv terminal64.exe that is already open.")
+    else:
+        steps.insert(1, "Set MT5_PATH to the exact Deriv terminal64.exe path so Python does not attach to the wrong terminal.")
+    return steps
 
 
 def _mt5_symbol_candidates(symbol: str) -> tuple[str, ...]:

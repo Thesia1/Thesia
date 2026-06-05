@@ -96,6 +96,8 @@ This checks live MT5 terminal, account, open positions, open orders, equity/marg
 
 For macOS execution limits and the recommended Windows VPS / execution-bridge setup, see [MT5 Execution On macOS](docs/MT5_MAC_EXECUTION.md).
 
+For Windows Deriv MT5 probe failures such as `(-10005, 'IPC timeout')`, see [Deriv MT5 Windows Troubleshooting](docs/MT5_WINDOWS_TROUBLESHOOTING.md).
+
 For the newly reviewed Session 1-3 strategy pictures and translation notes, see [Strategy Sessions 1-3 Review](docs/STRATEGY_SESSION_REVIEW.md).
 
 Check whether the agent prompt is grounded in the current playbook:
