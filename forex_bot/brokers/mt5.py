@@ -68,7 +68,17 @@ class Mt5MarketDataClient:
         path = self.config.mt5_path.strip()
         initialized = mt5.initialize(path, **initialize_kwargs) if path else mt5.initialize(**initialize_kwargs)
         if not initialized:
-            raise Mt5MarketDataError(f"MT5 initialize/login failed: {_mt5_last_error(mt5)}")
+            error = _mt5_last_error(mt5)
+            if _is_authorization_failed(error):
+                mt5.shutdown()
+                initialized = _initialize_attached_terminal(mt5, path, self.config.mt5_timeout_ms)
+            if not initialized:
+                raise Mt5MarketDataError(f"MT5 initialize/login failed: {error}")
+        account_info = mt5.account_info()
+        if account_info is None:
+            raise Mt5MarketDataError(f"MT5 account_info failed after initialize: {_mt5_last_error(mt5)}")
+        if not _account_login_matches_config(account_info, self.config.mt5_login):
+            raise Mt5MarketDataError("MT5 terminal is logged into a different account than MT5_LOGIN.")
 
     def _resolve_symbol(self, mt5, raw_symbol: str):
         for symbol in mt5_symbol_candidates(raw_symbol):
@@ -166,3 +176,17 @@ def _mt5_last_error(mt5) -> str:
         return str(mt5.last_error())
     except Exception:
         return "unknown"
+
+
+def _is_authorization_failed(error: str) -> bool:
+    normalized = error.lower()
+    return "-6" in normalized or "authorization failed" in normalized
+
+
+def _initialize_attached_terminal(mt5, path: str, timeout_ms: int) -> bool:
+    kwargs = {"timeout": timeout_ms}
+    return mt5.initialize(path, **kwargs) if path else mt5.initialize(**kwargs)
+
+
+def _account_login_matches_config(account_info, expected_login: str) -> bool:
+    return str(getattr(account_info, "login", "")).strip() == expected_login.strip()

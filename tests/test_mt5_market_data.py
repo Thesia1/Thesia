@@ -41,6 +41,48 @@ class Mt5MarketDataTest(unittest.TestCase):
         self.assertEqual(mt5.symbol_select.call_args.args[0], "Volatility 75 (1s) Index")
         mt5.shutdown.assert_called_once()
 
+    def test_market_data_can_attach_to_already_logged_in_terminal_after_auth_failure(self):
+        client = Mt5MarketDataClient(
+            ExecutionConfig(
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                mt5_timeout_ms=60000,
+            )
+        )
+        mt5 = _ready_mt5_mock()
+        mt5.initialize.side_effect = [False, True]
+        mt5.last_error.return_value = (-6, "Terminal: Authorization failed")
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            snapshot = client.get_market_snapshot("V75", granularity=Timeframe.M1, count=2)
+
+        self.assertEqual(snapshot.instrument.symbol, "Volatility 75 Index")
+        self.assertEqual(mt5.initialize.call_count, 2)
+        self.assertEqual(mt5.initialize.call_args_list[1].kwargs, {"timeout": 60000})
+
+    def test_market_data_rejects_attached_terminal_with_wrong_account(self):
+        client = Mt5MarketDataClient(
+            ExecutionConfig(
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                mt5_timeout_ms=60000,
+            )
+        )
+        mt5 = _ready_mt5_mock()
+        mt5.initialize.side_effect = [False, True]
+        mt5.last_error.return_value = (-6, "Terminal: Authorization failed")
+        mt5.account_info.return_value = _named(login=77777)
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            with self.assertRaises(Mt5MarketDataError) as context:
+                client.get_market_snapshot("V75", granularity=Timeframe.M1, count=2)
+
+        self.assertIn("different account", str(context.exception))
+
     def test_missing_mt5_package_fails_closed(self):
         client = Mt5MarketDataClient(
             ExecutionConfig(mt5_login="12345", mt5_password="secret", mt5_server="Deriv-Live")
@@ -56,6 +98,7 @@ class Mt5MarketDataTest(unittest.TestCase):
 def _ready_mt5_mock():
     mt5 = Mock()
     mt5.initialize.return_value = True
+    mt5.account_info.return_value = _named(login=12345)
     mt5.symbol_select.return_value = True
     mt5.symbol_info_tick.return_value = _named(bid=1000, ask=1000.05)
     mt5.symbol_info.return_value = _named(

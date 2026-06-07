@@ -43,6 +43,12 @@ Check these items on the Windows machine running the bot:
 7. Increase `MT5_TIMEOUT_MS` if the terminal is slow to start or the Windows laptop is under load.
 8. Restart Deriv MT5 and rerun the probe.
 
+## `(-6, 'Terminal: Authorization failed')`
+
+This means MT5 rejected the login/password/server passed by Python. First check that `MT5_LOGIN`, `MT5_PASSWORD`, and `MT5_SERVER` exactly match the Deriv MT5 account.
+
+If the terminal is already open and visibly logged into the same account, the bot can attach to that terminal session after the explicit login fails. It will only trust the attached session when the terminal account number matches `MT5_LOGIN`; otherwise execution remains blocked.
+
 Example `.env` values:
 
 ```dotenv

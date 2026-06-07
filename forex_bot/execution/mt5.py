@@ -85,14 +85,20 @@ class Mt5ExecutionClient:
             initialized = mt5.initialize(path, **initialize_kwargs)
         else:
             initialized = mt5.initialize(**initialize_kwargs)
+        attached_without_login = False
 
         if not initialized:
             error = _mt5_last_error(mt5)
-            return _replace_diagnostics(
-                diagnostics,
-                probe_error=f"MT5 initialize/login failed: {error}",
-                probe_details=_initialize_failure_details(error, path, self.config.mt5_timeout_ms),
-            )
+            if _is_authorization_failed(error):
+                mt5.shutdown()
+                initialized = _initialize_attached_terminal(mt5, path, self.config.mt5_timeout_ms)
+                attached_without_login = initialized
+            if not initialized:
+                return _replace_diagnostics(
+                    diagnostics,
+                    probe_error=f"MT5 initialize/login failed: {error}",
+                    probe_details=_initialize_failure_details(error, path, self.config.mt5_timeout_ms),
+                )
 
         try:
             account_info = mt5.account_info()
@@ -103,6 +109,19 @@ class Mt5ExecutionClient:
                     terminal_connected=True,
                     probe_error=f"MT5 account_info failed: {error}",
                     probe_details=_initialize_failure_details(error, path, self.config.mt5_timeout_ms),
+                )
+            if not _account_login_matches_config(account_info, self.config.mt5_login):
+                return _replace_diagnostics(
+                    diagnostics,
+                    terminal_connected=True,
+                    account_info_visible=True,
+                    account_login=_mask_login(str(getattr(account_info, "login", ""))),
+                    probe_error="MT5 terminal is logged into a different account than MT5_LOGIN.",
+                    probe_details={
+                        "expected_login": _mask_login(self.config.mt5_login),
+                        "actual_login": _mask_login(str(getattr(account_info, "login", ""))),
+                        "attached_without_login": attached_without_login,
+                    },
                 )
 
             positions = mt5.positions_get()
@@ -180,6 +199,7 @@ class Mt5ExecutionClient:
                     "symbols": symbol_results,
                     "missing_reconciliation_inputs": missing_reconciliation_inputs,
                     "recommended_actions": _reconciliation_recovery_steps(missing_reconciliation_inputs),
+                    "attached_without_login": attached_without_login,
                 },
             )
         finally:
@@ -277,7 +297,16 @@ class Mt5ExecutionClient:
         initialized = mt5.initialize(path, **initialize_kwargs) if path else mt5.initialize(**initialize_kwargs)
         if not initialized:
             error = _mt5_last_error(mt5)
-            raise ExecutionProviderError(f"MT5 initialize/login failed: {error}. {_initialize_failure_message(error, path)}")
+            if _is_authorization_failed(error):
+                mt5.shutdown()
+                initialized = _initialize_attached_terminal(mt5, path, self.config.mt5_timeout_ms)
+            if not initialized:
+                raise ExecutionProviderError(f"MT5 initialize/login failed: {error}. {_initialize_failure_message(error, path)}")
+        account_info = mt5.account_info()
+        if account_info is None:
+            raise ExecutionProviderError(f"MT5 account_info failed after initialize: {_mt5_last_error(mt5)}")
+        if not _account_login_matches_config(account_info, self.config.mt5_login):
+            raise ExecutionProviderError("MT5 terminal is logged into a different account than MT5_LOGIN.")
 
     def _resolve_symbol_for_order(self, mt5, raw_symbol: str):
         for symbol in _mt5_symbol_candidates(raw_symbol):
@@ -341,6 +370,20 @@ def _is_path_launch_failure(error: str, path: str) -> bool:
 def _is_ipc_timeout(error: str) -> bool:
     normalized = error.lower()
     return "-10005" in normalized or "ipc timeout" in normalized
+
+
+def _is_authorization_failed(error: str) -> bool:
+    normalized = error.lower()
+    return "-6" in normalized or "authorization failed" in normalized
+
+
+def _initialize_attached_terminal(mt5, path: str, timeout_ms: int) -> bool:
+    kwargs = {"timeout": timeout_ms}
+    return mt5.initialize(path, **kwargs) if path else mt5.initialize(**kwargs)
+
+
+def _account_login_matches_config(account_info, expected_login: str) -> bool:
+    return str(getattr(account_info, "login", "")).strip() == expected_login.strip()
 
 
 def _path_launch_recovery_steps(path: str) -> list[str]:

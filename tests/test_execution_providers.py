@@ -175,6 +175,65 @@ class ExecutionProviderTest(unittest.TestCase):
         self.assertFalse(diagnostics.probe_details["mt5_path_exists"])
         self.assertTrue(any("terminal64.exe location" in action for action in diagnostics.probe_details["recommended_actions"]))
 
+    def test_mt5_probe_can_attach_to_already_logged_in_terminal_after_auth_failure(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                order_placement_enabled=True,
+            )
+        )
+        mt5 = _ready_mt5_mock()
+        mt5.initialize.side_effect = [False, True]
+        mt5.last_error.return_value = (-6, "Terminal: Authorization failed")
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            diagnostics = client.diagnose(probe_terminal=True, symbols=("EUR_USD",))
+
+        self.assertTrue(diagnostics.reconciliation_ok)
+        self.assertTrue(diagnostics.can_place_orders)
+        self.assertTrue(diagnostics.probe_details["attached_without_login"])
+        self.assertEqual(mt5.initialize.call_count, 2)
+        self.assertEqual(mt5.initialize.call_args_list[1].kwargs, {"timeout": 60000})
+
+    def test_mt5_probe_rejects_attached_terminal_with_wrong_account(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                mt5_path=r"C:\Program Files\Deriv MT5\terminal64.exe",
+                order_placement_enabled=True,
+            )
+        )
+        mt5 = _ready_mt5_mock()
+        mt5.initialize.side_effect = [False, True]
+        mt5.last_error.return_value = (-6, "Terminal: Authorization failed")
+        mt5.account_info.return_value = _named(
+            login=77777,
+            company="Deriv",
+            server="Deriv-Live",
+            currency="USD",
+            balance=1000,
+            equity=1000,
+            margin_free=900,
+        )
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            diagnostics = client.diagnose(probe_terminal=True, symbols=("EUR_USD",))
+
+        self.assertFalse(diagnostics.reconciliation_ok)
+        self.assertFalse(diagnostics.can_place_orders)
+        self.assertIn("different account", diagnostics.probe_error)
+        self.assertEqual(diagnostics.probe_details["expected_login"], "12...45")
+        self.assertEqual(diagnostics.probe_details["actual_login"], "77...77")
+
     def test_mt5_probe_reports_missing_reconciliation_inputs(self):
         client = create_execution_client(
             ExecutionConfig(
