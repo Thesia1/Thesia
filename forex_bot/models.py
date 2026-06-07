@@ -21,6 +21,7 @@ class BrokerEnvironment(str, Enum):
 class BrokerProvider(str, Enum):
     OANDA = "oanda"
     FOREX_COM = "forex_com"
+    MT5 = "mt5"
 
 
 class ExecutionProvider(str, Enum):

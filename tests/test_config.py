@@ -75,6 +75,30 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.execution.mt5_magic, 123456)
         self.assertEqual(config.execution.mt5_timeout_ms, 60000)
 
+    def test_config_loads_mt5_market_data_for_deriv_synthetics(self):
+        with TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "MARKET_DATA_PROVIDER=mt5",
+                        "MARKET_DATA_ENVIRONMENT=live",
+                        "EXECUTION_PROVIDER=mt5",
+                        "EXECUTION_ENVIRONMENT=live",
+                        "MT5_LOGIN=12345",
+                        "MT5_PASSWORD=secret",
+                        "MT5_SERVER=DerivSVG-Server",
+                    ]
+                )
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                config = load_config_from_env(env_file)
+
+        self.assertEqual(config.broker.provider, BrokerProvider.MT5)
+        self.assertEqual(config.broker.environment, BrokerEnvironment.LIVE)
+        self.assertEqual(config.execution.provider, ExecutionProvider.MT5)
+        self.assertEqual(config.execution.environment, BrokerEnvironment.LIVE)
+
     def test_mt5_execution_provider_is_inferred_from_mt5_credentials(self):
         with TemporaryDirectory() as temp_dir:
             env_file = Path(temp_dir) / ".env"

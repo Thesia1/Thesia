@@ -6,6 +6,7 @@ from forex_bot.config import ExecutionConfig
 from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderSubmissionRequest, OrderSubmissionResult
 from forex_bot.execution.ledger import FileOrderLedger
 from forex_bot.models import Direction
+from forex_bot.symbols import mt5_symbol_candidates
 
 
 class Mt5ExecutionClient:
@@ -405,11 +406,7 @@ def _reconciliation_recovery_steps(missing: list[str]) -> list[str]:
 
 
 def _mt5_symbol_candidates(symbol: str) -> tuple[str, ...]:
-    stripped = symbol.replace("_", "").replace("/", "").upper()
-    original = symbol.strip()
-    if original and original != stripped:
-        return stripped, original
-    return (stripped,)
+    return mt5_symbol_candidates(symbol)
 
 
 def _mask_login(value: str) -> str:

@@ -281,34 +281,36 @@ def scan_pair_response(
                 agent=config.agent,
                 explicit_live_enabled=config.explicit_live_enabled,
             )
-        snapshot = create_broker_client(config.broker).get_market_snapshot(
+        broker_client = create_broker_client(config.broker, config.execution)
+        snapshot = broker_client.get_market_snapshot(
             symbol=normalized_pair,
             granularity=granularity,
             count=count,
         )
         candles = snapshot.candles
         instrument = snapshot.instrument
+        normalized_pair = instrument.symbol
         spread_pips = snapshot.spread_pips
         provider = snapshot.provider
         broker_environment = config.broker.environment.value
         if higher_timeframe is not None:
-            higher_snapshot = create_broker_client(config.broker).get_market_snapshot(
+            higher_snapshot = broker_client.get_market_snapshot(
                 symbol=normalized_pair,
                 granularity=higher_timeframe,
                 count=higher_timeframe_count,
             )
             higher_timeframe_candles = higher_snapshot.candles
-        monthly_candles = create_broker_client(config.broker).get_market_snapshot(
+        monthly_candles = broker_client.get_market_snapshot(
             symbol=normalized_pair,
             granularity=Timeframe.M,
             count=12,
         ).candles
-        weekly_candles = create_broker_client(config.broker).get_market_snapshot(
+        weekly_candles = broker_client.get_market_snapshot(
             symbol=normalized_pair,
             granularity=Timeframe.W,
             count=12,
         ).candles
-        daily_candles = create_broker_client(config.broker).get_market_snapshot(
+        daily_candles = broker_client.get_market_snapshot(
             symbol=normalized_pair,
             granularity=Timeframe.D,
             count=20,

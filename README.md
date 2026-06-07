@@ -74,6 +74,17 @@ EXECUTION_PROVIDER=mt5
 
 OANDA provides read-only candles and pricing. Deriv MT5 is the execution path. MT5 order submission is guarded by strategy, risk, reconciliation, explicit live mode, the order-placement switch, and the idempotency ledger.
 
+For Deriv synthetic indices, switch market data to MT5 because OANDA does not provide Volatility/Step index candles:
+
+```bash
+MARKET_DATA_PROVIDER=mt5
+MARKET_DATA_ENVIRONMENT=live
+EXECUTION_PROVIDER=mt5
+EXECUTION_ENVIRONMENT=live
+```
+
+Supported aliases include `V50_1S`, `STEP`, `V75`, and `V75_1S`, plus the exact Deriv MT5 names such as `Volatility 75 (1s) Index`.
+
 Run an OANDA connectivity check:
 
 ```bash
@@ -136,6 +147,12 @@ Run a multi-pair scan:
 
 ```bash
 python3 -m forex_bot scan --pairs EUR_USD,GBP_USD,USD_JPY --count 200
+```
+
+Run a Deriv synthetic-index scan from Windows/VPS with Deriv MT5 open:
+
+```bash
+python3 -m forex_bot scan --pairs V50_1S,STEP,V75,V75_1S --granularity M1 --paper-preview --probe-execution
 ```
 
 Include a live Deriv MT5 readiness probe in scan output when you want execution status beside the market scan:
