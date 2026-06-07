@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import unittest
 
-from forex_bot.__main__ import execute_live_response, persist_scan_result, scan_pair, scan_pair_response, scan_pairs_response, to_primitive
+from forex_bot.__main__ import autotrade_cycle_response, execute_live_response, persist_scan_result, scan_pair, scan_pair_response, scan_pairs_response, to_primitive
 from forex_bot.brokers.base import MarketSnapshot
 from forex_bot.config import BrokerConfig, BotConfig, ExecutionConfig, NewsConfig
 from forex_bot.execution.base import ExecutionDiagnostics, OrderSubmissionResult
@@ -246,6 +246,43 @@ class CliTest(unittest.TestCase):
         self.assertTrue(response.policy.allowed)
         self.assertTrue(response.submitted)
         self.assertEqual(response.submission.state, "ACCEPTED")
+        self.assertEqual(len(fake_execution.submitted_requests), 1)
+
+    def test_autotrade_cycle_can_be_ready_without_submitting(self):
+        fake_execution = FakeExecutionClient()
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=_live_ready_config(),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=FakeBrokerClient()), patch(
+            "forex_bot.__main__.create_execution_client",
+            return_value=fake_execution,
+        ):
+            response = autotrade_cycle_response(("EUR_USD",), submit_live_orders=False)
+
+        self.assertEqual(response.scanned_count, 1)
+        self.assertEqual(response.candidate_count, 1)
+        self.assertEqual(response.allowed_count, 1)
+        self.assertEqual(response.submitted_count, 0)
+        self.assertEqual(response.results[0].reason, "ready_but_not_submitted_without_submit_live_orders")
+        self.assertEqual(fake_execution.submitted_requests, [])
+
+    def test_autotrade_cycle_submits_when_requested_and_all_gates_pass(self):
+        fake_execution = FakeExecutionClient()
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=_live_ready_config(),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=FakeBrokerClient()), patch(
+            "forex_bot.__main__.create_execution_client",
+            return_value=fake_execution,
+        ):
+            response = autotrade_cycle_response(("EUR_USD",), submit_live_orders=True)
+
+        self.assertEqual(response.scanned_count, 1)
+        self.assertEqual(response.candidate_count, 1)
+        self.assertEqual(response.allowed_count, 1)
+        self.assertEqual(response.submitted_count, 1)
+        self.assertTrue(response.results[0].submitted)
+        self.assertEqual(response.results[0].submission.state, "ACCEPTED")
         self.assertEqual(len(fake_execution.submitted_requests), 1)
 
 

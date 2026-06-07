@@ -83,6 +83,30 @@ class LiveExecutionResponse:
     reason: str = ""
 
 
+@dataclass(frozen=True)
+class AutoTradePairResult:
+    scan: ScanResponse
+    risk_approval: RiskApproval | None
+    execution: ExecutionDiagnostics
+    policy: AgentAutonomyDecision
+    idempotency_key: str = ""
+    submitted: bool = False
+    submission: OrderSubmissionResult | None = None
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class AutoTradeCycleResponse:
+    results: tuple[AutoTradePairResult, ...]
+    scanned_count: int
+    candidate_count: int
+    allowed_count: int
+    submitted_count: int
+    max_orders: int
+    submit_live_orders: bool
+    reason: str
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="forex_bot")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -110,6 +134,18 @@ def main() -> None:
     execute.add_argument("--paper-equity", default="10000")
     execute.add_argument("--paper-margin-available", default="10000")
     execute.add_argument("--submit-live-order", action="store_true")
+
+    autotrade = subparsers.add_parser("autotrade")
+    autotrade.add_argument("--pairs", required=True)
+    autotrade.add_argument("--granularity", choices=[timeframe.value for timeframe in Timeframe], default=Timeframe.H1.value)
+    autotrade.add_argument("--higher-timeframe", choices=[timeframe.value for timeframe in Timeframe], default=None)
+    autotrade.add_argument("--count", type=int, default=200)
+    autotrade.add_argument("--higher-timeframe-count", type=int, default=80)
+    autotrade.add_argument("--paper-equity", default="10000")
+    autotrade.add_argument("--paper-margin-available", default="10000")
+    autotrade.add_argument("--max-orders", type=int, default=1)
+    autotrade.add_argument("--submit-live-orders", action="store_true")
+    autotrade.add_argument("--show-all-strategies", action="store_true")
 
     doctor = subparsers.add_parser("doctor")
     doctor_subparsers = doctor.add_subparsers(dest="doctor_target", required=True)
@@ -159,6 +195,24 @@ def main() -> None:
             )
         except (BrokerConfigError, ExecutionProviderError, ValueError) as error:
             print(json.dumps({"error": str(error), "source": "execute"}, indent=2), file=stderr)
+            exit(2)
+        print(json.dumps(to_primitive(response), indent=2, sort_keys=True))
+    elif args.command == "autotrade":
+        try:
+            response = autotrade_cycle_response(
+                pairs=_parse_pairs(args.pairs),
+                granularity=Timeframe(args.granularity),
+                count=args.count,
+                higher_timeframe=Timeframe(args.higher_timeframe) if args.higher_timeframe else None,
+                higher_timeframe_count=args.higher_timeframe_count,
+                paper_equity=Decimal(args.paper_equity),
+                paper_margin_available=Decimal(args.paper_margin_available),
+                max_orders=args.max_orders,
+                submit_live_orders=args.submit_live_orders,
+                show_all_strategies=args.show_all_strategies,
+            )
+        except (BrokerConfigError, ExecutionProviderError, ValueError) as error:
+            print(json.dumps({"error": str(error), "source": "autotrade"}, indent=2), file=stderr)
             exit(2)
         print(json.dumps(to_primitive(response), indent=2, sort_keys=True))
     elif args.command == "doctor" and args.doctor_target == "oanda":
@@ -437,6 +491,98 @@ def execute_live_response(
         submitted=submission.state == "ACCEPTED",
         submission=submission,
         reason="submitted" if submission.state == "ACCEPTED" else submission.state.lower(),
+    )
+
+
+def autotrade_cycle_response(
+    pairs: tuple[str, ...],
+    granularity: Timeframe = Timeframe.H1,
+    count: int = 200,
+    higher_timeframe: Timeframe | None = None,
+    higher_timeframe_count: int = 80,
+    paper_equity: Decimal = Decimal("10000"),
+    paper_margin_available: Decimal = Decimal("10000"),
+    max_orders: int = 1,
+    submit_live_orders: bool = False,
+    show_all_strategies: bool = False,
+) -> AutoTradeCycleResponse:
+    if not pairs:
+        raise ValueError("autotrade requires at least one pair.")
+    if max_orders < 1:
+        raise ValueError("max_orders must be at least 1.")
+
+    config = load_config_from_env()
+    execution_client = create_execution_client(config.execution)
+    ledger = FileOrderLedger(config.execution.idempotency_ledger_path)
+    results: list[AutoTradePairResult] = []
+    submitted_count = 0
+
+    for pair in pairs:
+        scan = scan_pair_response(
+            pair=pair,
+            source="broker",
+            granularity=granularity,
+            count=count,
+            higher_timeframe=higher_timeframe,
+            higher_timeframe_count=higher_timeframe_count,
+            paper_preview=True,
+            paper_equity=paper_equity,
+            paper_margin_available=paper_margin_available,
+            show_all_strategies=show_all_strategies,
+        )
+        risk_approval = scan.paper_preview.risk_approval if scan.paper_preview is not None else None
+        execution = execution_client.diagnose(probe_terminal=True, symbols=(scan.decision.symbol,))
+        scan = replace(scan, execution=execution)
+        policy = evaluate_agent_autonomy(
+            mode=config.mode,
+            strategy_decision=scan.decision,
+            risk_approval=risk_approval,
+            execution=execution,
+        )
+        idempotency_key = _idempotency_key(scan.decision, risk_approval)
+        submission = None
+        submitted = False
+        reason = "execution_policy_blocked"
+
+        if policy.allowed:
+            if submitted_count >= max_orders:
+                reason = "max_orders_reached"
+            elif not submit_live_orders:
+                reason = "ready_but_not_submitted_without_submit_live_orders"
+            else:
+                if scan.decision.candidate is None or risk_approval is None:
+                    raise ExecutionProviderError("Cannot submit without a strategy candidate and risk approval.")
+                submission = execution_client.submit_order(
+                    _order_submission_request(scan.decision, risk_approval, idempotency_key),
+                    ledger=ledger,
+                )
+                submitted = submission.state == "ACCEPTED"
+                if submitted:
+                    submitted_count += 1
+                reason = "submitted" if submitted else submission.state.lower()
+
+        results.append(
+            AutoTradePairResult(
+                scan=scan,
+                risk_approval=risk_approval,
+                execution=execution,
+                policy=policy,
+                idempotency_key=idempotency_key,
+                submitted=submitted,
+                submission=submission,
+                reason=reason,
+            )
+        )
+
+    return AutoTradeCycleResponse(
+        results=tuple(results),
+        scanned_count=len(results),
+        candidate_count=sum(1 for result in results if result.scan.decision.candidate is not None),
+        allowed_count=sum(1 for result in results if result.policy.allowed),
+        submitted_count=submitted_count,
+        max_orders=max_orders,
+        submit_live_orders=submit_live_orders,
+        reason="cycle_complete",
     )
 
 
