@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from forex_bot.config import BrokerConfig
 from forex_bot.brokers.base import BrokerConfigError, MarketSnapshot
 from forex_bot.models import Candle, InstrumentSpec, Timeframe
+from forex_bot.symbols import normalize_market_symbol
 
 
 class OandaConfigError(BrokerConfigError):
@@ -182,21 +183,32 @@ class OandaClient:
 
 
 def to_oanda_instrument(symbol: str) -> str:
-    return symbol.replace("/", "_").upper()
+    return normalize_market_symbol(symbol)
 
 
 def instrument_spec_for(symbol: str) -> InstrumentSpec:
     normalized = to_oanda_instrument(symbol)
-    pip_size = Decimal("0.01") if normalized.endswith("_JPY") else Decimal("0.0001")
+    if normalized == "XAU_USD":
+        pip_size = Decimal("0.01")
+        max_units = Decimal("1000")
+        max_spread_pips = Decimal("50")
+    elif normalized.endswith("_JPY"):
+        pip_size = Decimal("0.01")
+        max_units = Decimal("100000")
+        max_spread_pips = Decimal("5")
+    else:
+        pip_size = Decimal("0.0001")
+        max_units = Decimal("100000")
+        max_spread_pips = Decimal("2")
     return InstrumentSpec(
         symbol=normalized,
         pip_size=pip_size,
         pip_value_per_unit=pip_size,
         min_units=Decimal("1"),
-        max_units=Decimal("100000"),
+        max_units=max_units,
         unit_step=Decimal("1"),
         margin_rate=Decimal("0.0333"),
-        max_spread_pips=Decimal("2"),
+        max_spread_pips=max_spread_pips,
     )
 
 

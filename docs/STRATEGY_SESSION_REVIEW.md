@@ -74,6 +74,25 @@ Agent interpretation:
 - The full nested monthly supply/demand curve model is not complete.
 - Trendline break and trend-change logic are not executable yet.
 
+## User Chart Addendum: Supply And Demand In Sequence
+
+Key concept:
+
+- A supply zone below a descending trendline is a preferred bearish continuation context.
+- The first chart shows the expected trade idea: market is anticipated to reject/drop from the supply in sequence.
+- The second chart shows the completed behavior: market dropped from that supply in sequence and continued lower.
+- The visual confluence is supply-in-sequence plus descending trendline pressure.
+- A demand zone above an ascending trendline is a preferred bullish continuation context.
+- When price returns to an untested demand zone near the ascending trendline, the documented action is an immediate buy candidate.
+- The same first-touch and trendline-nearness rules apply to supply in sequence and demand in sequence.
+
+Agent interpretation:
+
+- The agent should remember this as bullish and bearish playbook context.
+- The first deterministic implementation is `trendline_zone_sequence`.
+- `trendline_zone_sequence` can produce immediate candidates on first touch of an untested zone near the correct trendline; risk, spread, broker reconciliation, live-mode, and idempotency gates still control execution.
+- The current implementation uses a simplified two-swing trendline and fixed 2R first target; full multi-timeframe challenge-management rules remain future work.
+
 ## Current Translation Status
 
 Implemented or partially implemented:
@@ -83,6 +102,7 @@ Implemented or partially implemented:
 - 0-25% high/low curve filter.
 - Monthly/weekly/daily direction context.
 - Nearest opposing zone target.
+- Trendline-zone sequence first-touch entries.
 - Risk gate and execution policy.
 
 Still needs deterministic detectors:
@@ -98,7 +118,7 @@ Still needs deterministic detectors:
 - Touch-count confirmation rules.
 - Inheritance-zone classification.
 - Flip-zone classification.
-- Trendline from last two swing highs/lows.
+- Full visual trendline management beyond the first two-swing trendline-zone sequence detector.
 - Trend-change confirmation with trendline break and two opposite-zone removals.
 - Full monthly supply/demand nested curve model.
 

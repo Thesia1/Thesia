@@ -1,6 +1,20 @@
 from collections.abc import Iterable
 
 
+KNOWN_MARKET_CODES = {
+    "AUD",
+    "CAD",
+    "CHF",
+    "EUR",
+    "GBP",
+    "JPY",
+    "NZD",
+    "USD",
+    "XAG",
+    "XAU",
+}
+
+
 DERIV_SYNTHETIC_ALIASES: dict[str, tuple[str, ...]] = {
     "V50_1S": ("Volatility 50 (1s) Index",),
     "VOLATILITY_50_1S": ("Volatility 50 (1s) Index",),
@@ -16,9 +30,19 @@ DERIV_SYNTHETIC_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+def normalize_market_symbol(symbol: str) -> str:
+    raw = symbol.strip().replace("/", "_").replace(" ", "_").upper()
+    if "_" in raw:
+        return raw
+    if len(raw) == 6 and raw[:3] in KNOWN_MARKET_CODES and raw[3:] in KNOWN_MARKET_CODES:
+        return f"{raw[:3]}_{raw[3:]}"
+    return raw
+
+
 def mt5_symbol_candidates(symbol: str) -> tuple[str, ...]:
     raw = symbol.strip()
-    compact = raw.replace("/", "").replace("_", "").upper()
+    normalized_market = normalize_market_symbol(raw)
+    compact = normalized_market.replace("/", "").replace("_", "").upper()
     underscored = raw.replace("/", "_").replace(" ", "_").upper()
     normalized_words = (
         raw.upper()
@@ -30,7 +54,7 @@ def mt5_symbol_candidates(symbol: str) -> tuple[str, ...]:
     candidates: list[str] = []
     candidates.extend(DERIV_SYNTHETIC_ALIASES.get(underscored, ()))
     candidates.extend(DERIV_SYNTHETIC_ALIASES.get(normalized_words, ()))
-    candidates.extend((compact, raw))
+    candidates.extend((compact, normalized_market, raw))
     return _dedupe(candidate for candidate in candidates if candidate)
 
 

@@ -25,6 +25,7 @@ from forex_bot.paper import PaperTradePreview, preview_paper_trade
 from forex_bot.playbook.coverage import current_playbook_coverage
 from forex_bot.strategy import StrategyContext
 from forex_bot.strategy.fresh_strong_zone import FreshStrongZoneContinuation
+from forex_bot.strategy.trendline_zone_sequence import TrendlineZoneSequence
 
 
 @dataclass(frozen=True)
@@ -316,8 +317,7 @@ def scan_pair_response(
             count=20,
         ).candles
 
-    strategy = FreshStrongZoneContinuation()
-    decision = strategy.evaluate(
+    decision = _evaluate_strategies(
         StrategyContext(
             symbol=normalized_pair,
             candles=candles,
@@ -429,6 +429,23 @@ def execute_live_response(
         submission=submission,
         reason="submitted" if submission.state == "ACCEPTED" else submission.state.lower(),
     )
+
+
+def _evaluate_strategies(context: StrategyContext) -> StrategyDecision:
+    decisions = tuple(
+        strategy.evaluate(context)
+        for strategy in (
+            FreshStrongZoneContinuation(),
+            TrendlineZoneSequence(),
+        )
+    )
+    for decision in decisions:
+        if decision.state == SignalState.TRADE_CANDIDATE and decision.candidate is not None:
+            return decision
+    for decision in decisions:
+        if decision.state == SignalState.WATCH:
+            return decision
+    return decisions[0]
 
 
 def _order_submission_request(

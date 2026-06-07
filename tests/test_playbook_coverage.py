@@ -31,6 +31,10 @@ class PlaybookCoverageTest(unittest.TestCase):
         self.assertEqual(concepts["stairs_zone_rejection"].state, PlaybookCoverageState.MISSING)
         self.assertEqual(concepts["trendline_break_change"].state, PlaybookCoverageState.MISSING)
         self.assertFalse(concepts["trendline_break_change"].automation_required)
+        self.assertEqual(concepts["supply_in_sequence_below_descending_trendline"].state, PlaybookCoverageState.IMPLEMENTED)
+        self.assertFalse(concepts["supply_in_sequence_below_descending_trendline"].automation_required)
+        self.assertEqual(concepts["demand_in_sequence_above_ascending_trendline"].state, PlaybookCoverageState.IMPLEMENTED)
+        self.assertFalse(concepts["demand_in_sequence_above_ascending_trendline"].automation_required)
         self.assertNotIn("stairs_zone_rejection", report.required_blockers)
 
 

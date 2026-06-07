@@ -42,6 +42,11 @@ Implemented concepts:
 - Retest count rejection for previously touched zones
 - Zone invalidation rejection
 - High-curve / low-curve location filter using the documented 0-25% higher-timeframe extremes when higher-timeframe context is supplied
+- Trendline-zone sequence first-touch strategy:
+  - demand in sequence above an ascending trendline
+  - supply in sequence below a descending trendline
+  - untested zone / first-touch requirement
+  - immediate candidate on touch without candle-close confirmation
 - Nearest opposing zone target selection when it preserves minimum reward
 - Scheduled economic-calendar news blackout enforcement
 - Deriv MT5 reconciliation diagnostics
@@ -132,6 +137,7 @@ From Echo/Raja:
 - Flip zones
 - Overlap areas
 - Trendline break confirmation
+- Full challenge-style all-timeframe trendline/zone playbook beyond the first trendline-zone sequence detector
 - Two opposite-zone removal for direction change
 - Full nested high/low curve range model across the monthly/weekly/daily sequence
 - Middle-of-curve no-trade filter
@@ -195,14 +201,15 @@ Priority order:
 
 1. Add PoB engulfing/body confirmation.
 2. Add danger-zone invalidation.
-3. Add trendline break confirmation.
-4. Add CP and PCP.
-5. Add arrival zones.
-6. Add realignment and wow trade.
-7. Add PoB setup families.
-8. Add persistent paper-trading ledger.
-9. Add full backtesting reports.
-10. Add live daemon / dashboard button loop.
+3. Add full trendline break and trend-change confirmation.
+4. Add full multi-timeframe sequence strategy management across D/H4/H1/M30/M15/M5/M1.
+5. Add CP and PCP.
+6. Add arrival zones.
+7. Add realignment and wow trade.
+8. Add PoB setup families.
+9. Add persistent paper-trading ledger.
+10. Add full backtesting reports.
+11. Add live daemon / dashboard button loop.
 
 ## Current Verification
 

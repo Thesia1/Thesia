@@ -146,7 +146,7 @@ The command still returns `BLOCK_EXECUTION` instead of submitting if there is no
 Run a multi-pair scan:
 
 ```bash
-python3 -m forex_bot scan --pairs EUR_USD,GBP_USD,USD_JPY --count 200
+python3 -m forex_bot scan --pairs GBPUSD,EURUSD,USDJPY,XAUUSD,GBPJPY --count 200
 ```
 
 Run a Deriv synthetic-index scan from Windows/VPS with Deriv MT5 open:

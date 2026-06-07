@@ -10,8 +10,11 @@ class AgentPlaybookTest(unittest.TestCase):
         self.assertTrue(report.grounded)
         self.assertEqual(report.missing_topics, ())
         self.assertIn("fresh_strong_zone_continuation", report.prompt_preview)
+        self.assertIn("trendline_zone_sequence", report.prompt_preview)
         self.assertIn("Stairs zones", report.prompt_preview)
         self.assertIn("CP levels", report.prompt_preview)
+        self.assertIn("Supply-in-sequence", report.prompt_preview)
+        self.assertIn("Demand-in-sequence", report.prompt_preview)
 
     def test_incomplete_messages_report_missing_topics(self):
         report = assess_playbook_grounding([])

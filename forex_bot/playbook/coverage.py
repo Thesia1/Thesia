@@ -163,6 +163,20 @@ def current_playbook_coverage() -> PlaybookCoverageReport:
             notes="Docs use last two swing highs/lows for trendline and require trendline break plus opposing-zone removal for trend change; no trendline detector is wired.",
         ),
         PlaybookConcept(
+            name="supply_in_sequence_below_descending_trendline",
+            source="User chart example",
+            state=PlaybookCoverageState.IMPLEMENTED,
+            automation_required=False,
+            notes="First deterministic detector implemented in trendline_zone_sequence: lower swing-high trendline, first-touch untested supply zone near the trendline, immediate sell candidate, and risk/execution gates still apply.",
+        ),
+        PlaybookConcept(
+            name="demand_in_sequence_above_ascending_trendline",
+            source="User chart example",
+            state=PlaybookCoverageState.IMPLEMENTED,
+            automation_required=False,
+            notes="First deterministic detector implemented in trendline_zone_sequence: higher swing-low trendline, first-touch untested demand zone near the trendline, immediate buy candidate, and risk/execution gates still apply.",
+        ),
+        PlaybookConcept(
             name="nested_monthly_curve_model",
             source="Session 3",
             state=PlaybookCoverageState.PARTIAL,

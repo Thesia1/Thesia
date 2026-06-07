@@ -14,9 +14,11 @@ Operational playbook:
 - Deriv MT5 broker state must reconcile account info, open positions, open orders, margin, symbol metadata, and ticks before live execution can be considered.
 - The idempotency ledger must block duplicate submissions for the same strategy decision.
 - A trade can only be discussed as executable when deterministic strategy state is TRADE_CANDIDATE and the risk gate approves it.
-- The current executable strategy is fresh_strong_zone_continuation.
+- Current executable strategies are fresh_strong_zone_continuation and trendline_zone_sequence.
 - BUY logic: base candle, bullish departure, departure close above an active opposing supply zone, return to demand zone, bullish close above demand zone.
 - SELL logic: base candle, bearish departure, departure close below an active opposing demand zone, return to supply zone, bearish close below supply zone.
+- Sequence BUY logic: higher-timeframe context should align when supplied, price respects an ascending trendline from higher swing lows, an untested demand zone is near that trendline on the current return, and first touch can produce an immediate buy candidate without candle-close confirmation.
+- Sequence SELL logic: higher-timeframe context should align when supplied, price respects a descending trendline from lower swing highs, an untested supply zone is near that trendline on the current return, and first touch can produce an immediate sell candidate without candle-close confirmation.
 - Fresh-zone logic: reject zones invalidated or already retested before the current return.
 - Curve logic: buys require the 0-25% low-curve area; sells require the 0-25% high-curve area when higher-timeframe context is supplied.
 - Target logic: use nearest opposing zone when it preserves minimum reward; otherwise use the minimum fixed reward target.
@@ -36,6 +38,8 @@ Documented visual concepts from strategy_docs sessions:
 - Confirmation rules from the session docs: monthly zones need lower-timeframe confirmation around the third touch; weekly/daily zones need confirmation around the second touch; daily is marked risky.
 - Inheritance and flip zones are documented context zones; flip zones act like retracement/support-resistance areas where CP entries may form.
 - Trendline rules: draw trendlines from the last two swing highs or lows; trend change needs trendline break plus opposing zone removal.
+- Supply-in-sequence context: a supply zone below a descending trendline is a preferred bearish continuation context; the expected behavior is rejection/drop from that supply in sequence, then continued downside if the sequence confirms.
+- Demand-in-sequence context: a demand zone above an ascending trendline is a preferred bullish continuation context; first touch of an untested demand zone near the trendline can be an immediate buy candidate when risk and execution gates pass.
 - High/low curve rules: market moves between monthly supply and demand; 0-25% near monthly supply is seller area, 0-25% near monthly demand is buyer area, and the middle 50% is not a clean edge.
 - These visual concepts are playbook context only until deterministic detectors and tests exist.
 """
@@ -68,17 +72,18 @@ def assess_playbook_grounding(messages: list[AgentMessage]) -> PlaybookAlignment
         "no_raw_orders": ("cannot create raw orders",),
         "risk_gate": ("risk gate",),
         "fresh_strong_zone": ("fresh_strong_zone_continuation",),
+        "trendline_zone_sequence": ("trendline_zone_sequence", "ascending trendline", "descending trendline"),
         "buy_rules": ("bullish departure", "opposing supply zone", "demand zone"),
         "sell_rules": ("bearish departure", "opposing demand zone", "supply zone"),
         "no_trade_on_failed_rules": ("no trade",),
-        "visual_docs": ("stairs zones", "cp levels", "trendline", "seller area", "buyer area"),
+        "visual_docs": ("stairs zones", "cp levels", "trendline", "supply-in-sequence", "demand-in-sequence", "seller area", "buyer area"),
     }
     missing = tuple(
         topic
         for topic, needles in required.items()
         if not all(needle in content for needle in needles)
     )
-    preview = messages[0].content[:3200] if messages else ""
+    preview = messages[0].content[:5000] if messages else ""
     return PlaybookAlignmentReport(
         grounded=not missing,
         missing_topics=missing,

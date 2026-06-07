@@ -19,9 +19,17 @@ class OandaClientTest(unittest.TestCase):
 
     def test_to_oanda_instrument_normalizes_pair(self):
         self.assertEqual(to_oanda_instrument("EUR/USD"), "EUR_USD")
+        self.assertEqual(to_oanda_instrument("GBPUSD"), "GBP_USD")
+        self.assertEqual(to_oanda_instrument("EURUSD"), "EUR_USD")
+        self.assertEqual(to_oanda_instrument("USDJPY"), "USD_JPY")
+        self.assertEqual(to_oanda_instrument("XAUUSD"), "XAU_USD")
+        self.assertEqual(to_oanda_instrument("GBPJPY"), "GBP_JPY")
 
     def test_instrument_spec_uses_jpy_pip_size(self):
         self.assertEqual(instrument_spec_for("USD_JPY").pip_size, Decimal("0.01"))
+        self.assertEqual(instrument_spec_for("GBPJPY").pip_size, Decimal("0.01"))
+        self.assertEqual(instrument_spec_for("XAUUSD").pip_size, Decimal("0.01"))
+        self.assertEqual(instrument_spec_for("XAUUSD").max_spread_pips, Decimal("50"))
 
     def test_get_market_snapshot_parses_candles_and_spread(self):
         client = OandaClient(
