@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import unittest
 
-from forex_bot.__main__ import execute_live_response, persist_scan_result, scan_pair, scan_pair_response, scan_pairs_response
+from forex_bot.__main__ import execute_live_response, persist_scan_result, scan_pair, scan_pair_response, scan_pairs_response, to_primitive
 from forex_bot.brokers.base import MarketSnapshot
 from forex_bot.config import BrokerConfig, BotConfig, ExecutionConfig, NewsConfig
 from forex_bot.execution.base import ExecutionDiagnostics, OrderSubmissionResult
@@ -91,6 +91,22 @@ class CliTest(unittest.TestCase):
         self.assertEqual(response.candidate_count, 2)
         self.assertEqual(response.tradeable_paper_count, 2)
         self.assertEqual(len(response.scans), 2)
+
+    def test_scan_response_can_show_all_strategy_decisions(self):
+        response = scan_pair_response("EUR_USD", source="fixture", show_all_strategies=True)
+
+        self.assertIsNotNone(response.all_strategy_decisions)
+        self.assertEqual(
+            [decision.setup_name for decision in response.all_strategy_decisions],
+            ["fresh_strong_zone_continuation", "trendline_zone_sequence"],
+        )
+
+    def test_scan_response_hides_all_strategy_decisions_by_default(self):
+        response = scan_pair_response("EUR_USD", source="fixture")
+
+        primitive = to_primitive(response)
+
+        self.assertNotIn("all_strategy_decisions", primitive)
 
     def test_scan_response_can_probe_execution(self):
         fake_execution = FakeExecutionClient()

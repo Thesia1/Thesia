@@ -60,6 +60,7 @@ class ScanResponse:
     execution: ExecutionDiagnostics | None = None
     paper_preview: PaperTradePreview | None = None
     news_blackout: NewsBlackoutDecision | None = None
+    all_strategy_decisions: tuple[StrategyDecision, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ def main() -> None:
     scan.add_argument("--paper-equity", default="10000")
     scan.add_argument("--paper-margin-available", default="10000")
     scan.add_argument("--probe-execution", action="store_true")
+    scan.add_argument("--show-all-strategies", action="store_true")
     scan.add_argument("--log-path", default="")
 
     execute = subparsers.add_parser("execute")
@@ -137,6 +139,7 @@ def main() -> None:
                 paper_equity=Decimal(args.paper_equity),
                 paper_margin_available=Decimal(args.paper_margin_available),
                 probe_execution=args.probe_execution,
+                show_all_strategies=args.show_all_strategies,
             )
             if args.log_path:
                 persist_scan_result(response, args.log_path)
@@ -204,6 +207,7 @@ def scan_pairs_response(
     paper_equity: Decimal = Decimal("10000"),
     paper_margin_available: Decimal = Decimal("10000"),
     probe_execution: bool = False,
+    show_all_strategies: bool = False,
 ):
     scans = tuple(
         scan_pair_response(
@@ -218,6 +222,7 @@ def scan_pairs_response(
             paper_equity=paper_equity,
             paper_margin_available=paper_margin_available,
             probe_execution=probe_execution,
+            show_all_strategies=show_all_strategies,
         )
         for pair in pairs
     )
@@ -243,6 +248,7 @@ def scan_pair_response(
     paper_equity: Decimal = Decimal("10000"),
     paper_margin_available: Decimal = Decimal("10000"),
     probe_execution: bool = False,
+    show_all_strategies: bool = False,
 ) -> ScanResponse:
     normalized_pair = to_oanda_instrument(pair)
     provider = "local_fixture"
@@ -317,21 +323,23 @@ def scan_pair_response(
             count=20,
         ).candles
 
-    decision = _evaluate_strategies(
-        StrategyContext(
-            symbol=normalized_pair,
-            candles=candles,
-            instrument=instrument,
-            spread_pips=spread_pips,
-            higher_timeframe_candles=higher_timeframe_candles,
-            monthly_candles=monthly_candles,
-            weekly_candles=weekly_candles,
-            daily_candles=daily_candles,
-        )
+    strategy_context = StrategyContext(
+        symbol=normalized_pair,
+        candles=candles,
+        instrument=instrument,
+        spread_pips=spread_pips,
+        higher_timeframe_candles=higher_timeframe_candles,
+        monthly_candles=monthly_candles,
+        weekly_candles=weekly_candles,
+        daily_candles=daily_candles,
     )
+    strategy_decisions = _evaluate_all_strategies(strategy_context)
+    decision = _select_strategy_decision(strategy_decisions)
     news_blackout = blackout_from_config(normalized_pair, decision.created_at, config.news) if config is not None else None
     if news_blackout is not None:
         decision = _apply_news_blackout(decision, news_blackout)
+        if show_all_strategies:
+            strategy_decisions = tuple(_apply_news_blackout(item, news_blackout) for item in strategy_decisions)
     paper = None
     if paper_preview:
         paper = _paper_preview(
@@ -363,6 +371,7 @@ def scan_pair_response(
         ),
         paper_preview=paper,
         news_blackout=news_blackout,
+        all_strategy_decisions=strategy_decisions if show_all_strategies else None,
     )
 
 
@@ -432,13 +441,20 @@ def execute_live_response(
 
 
 def _evaluate_strategies(context: StrategyContext) -> StrategyDecision:
-    decisions = tuple(
+    return _select_strategy_decision(_evaluate_all_strategies(context))
+
+
+def _evaluate_all_strategies(context: StrategyContext) -> tuple[StrategyDecision, ...]:
+    return tuple(
         strategy.evaluate(context)
         for strategy in (
             FreshStrongZoneContinuation(),
             TrendlineZoneSequence(),
         )
     )
+
+
+def _select_strategy_decision(decisions: tuple[StrategyDecision, ...]) -> StrategyDecision:
     for decision in decisions:
         if decision.state == SignalState.TRADE_CANDIDATE and decision.candidate is not None:
             return decision
@@ -645,7 +661,7 @@ def to_primitive(value):
     if is_dataclass(value):
         return to_primitive(asdict(value))
     if isinstance(value, dict):
-        return {key: to_primitive(item) for key, item in value.items()}
+        return {key: to_primitive(item) for key, item in value.items() if not (key == "all_strategy_decisions" and item is None)}
     if isinstance(value, list | tuple):
         return [to_primitive(item) for item in value]
     if isinstance(value, Decimal):
