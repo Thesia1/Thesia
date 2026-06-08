@@ -15,11 +15,11 @@ from forex_bot.brokers.factory import create_broker_client
 from forex_bot.brokers.oanda import OandaClient
 from forex_bot.brokers.oanda import instrument_spec_for, to_oanda_instrument
 from forex_bot.config import BotConfig, load_config_from_env
-from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderSubmissionRequest, OrderSubmissionResult
+from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderPreflightResult, OrderSubmissionRequest, OrderSubmissionResult
 from forex_bot.execution.factory import create_execution_client
 from forex_bot.execution.ledger import FileOrderLedger
 from forex_bot.fixtures import load_fixture_candles
-from forex_bot.models import AccountState, BotMode, BrokerEnvironment, BrokerProvider, Candle, InstrumentSpec, RiskApproval, RiskLimits, RuleEvidence, SignalState, StrategyDecision, Timeframe
+from forex_bot.models import AccountState, BotMode, BrokerEnvironment, BrokerProvider, Candle, InstrumentSpec, RiskApproval, RiskDecision, RiskLimits, RuleEvidence, SignalState, StrategyDecision, Timeframe
 from forex_bot.news.blackout import NewsBlackoutDecision, blackout_from_config
 from forex_bot.paper import PaperTradePreview, preview_paper_trade
 from forex_bot.playbook.coverage import current_playbook_coverage
@@ -77,6 +77,7 @@ class LiveExecutionResponse:
     risk_approval: RiskApproval | None
     execution: ExecutionDiagnostics
     policy: AgentAutonomyDecision
+    execution_preflight: OrderPreflightResult | None = None
     idempotency_key: str = ""
     submitted: bool = False
     submission: OrderSubmissionResult | None = None
@@ -89,6 +90,7 @@ class AutoTradePairResult:
     risk_approval: RiskApproval | None
     execution: ExecutionDiagnostics
     policy: AgentAutonomyDecision
+    execution_preflight: OrderPreflightResult | None = None
     idempotency_key: str = ""
     submitted: bool = False
     submission: OrderSubmissionResult | None = None
@@ -451,19 +453,22 @@ def execute_live_response(
     execution_client = create_execution_client(config.execution)
     execution = execution_client.diagnose(probe_terminal=True, symbols=(scan.decision.symbol,))
     scan = replace(scan, execution=execution)
+    idempotency_key = _idempotency_key(scan.decision, risk_approval)
+    execution_preflight = _preflight_order_request(execution_client, scan.decision, risk_approval, idempotency_key)
+    risk_approval = _risk_approval_with_execution_preflight(risk_approval, execution_preflight)
     policy = evaluate_agent_autonomy(
         mode=config.mode,
         strategy_decision=scan.decision,
         risk_approval=risk_approval,
         execution=execution,
     )
-    idempotency_key = _idempotency_key(scan.decision, risk_approval)
     if not policy.allowed:
         return LiveExecutionResponse(
             scan=scan,
             risk_approval=risk_approval,
             execution=execution,
             policy=policy,
+            execution_preflight=execution_preflight,
             idempotency_key=idempotency_key,
             reason="execution_policy_blocked",
         )
@@ -473,6 +478,7 @@ def execute_live_response(
             risk_approval=risk_approval,
             execution=execution,
             policy=policy,
+            execution_preflight=execution_preflight,
             idempotency_key=idempotency_key,
             reason="ready_but_not_submitted_without_submit_live_order",
         )
@@ -487,6 +493,7 @@ def execute_live_response(
         risk_approval=risk_approval,
         execution=execution,
         policy=policy,
+        execution_preflight=execution_preflight,
         idempotency_key=idempotency_key,
         submitted=submission.state == "ACCEPTED",
         submission=submission,
@@ -533,13 +540,15 @@ def autotrade_cycle_response(
         risk_approval = scan.paper_preview.risk_approval if scan.paper_preview is not None else None
         execution = execution_client.diagnose(probe_terminal=True, symbols=(scan.decision.symbol,))
         scan = replace(scan, execution=execution)
+        idempotency_key = _idempotency_key(scan.decision, risk_approval)
+        execution_preflight = _preflight_order_request(execution_client, scan.decision, risk_approval, idempotency_key)
+        risk_approval = _risk_approval_with_execution_preflight(risk_approval, execution_preflight)
         policy = evaluate_agent_autonomy(
             mode=config.mode,
             strategy_decision=scan.decision,
             risk_approval=risk_approval,
             execution=execution,
         )
-        idempotency_key = _idempotency_key(scan.decision, risk_approval)
         submission = None
         submitted = False
         reason = "execution_policy_blocked"
@@ -567,6 +576,7 @@ def autotrade_cycle_response(
                 risk_approval=risk_approval,
                 execution=execution,
                 policy=policy,
+                execution_preflight=execution_preflight,
                 idempotency_key=idempotency_key,
                 submitted=submitted,
                 submission=submission,
@@ -583,6 +593,36 @@ def autotrade_cycle_response(
         max_orders=max_orders,
         submit_live_orders=submit_live_orders,
         reason="cycle_complete",
+    )
+
+
+def _preflight_order_request(
+    execution_client,
+    decision: StrategyDecision,
+    risk_approval: RiskApproval | None,
+    idempotency_key: str,
+) -> OrderPreflightResult | None:
+    if decision.candidate is None or risk_approval is None or risk_approval.decision != RiskDecision.APPROVED:
+        return None
+    if not hasattr(execution_client, "preflight_order"):
+        return None
+    return execution_client.preflight_order(
+        _order_submission_request(decision, risk_approval, idempotency_key)
+    )
+
+
+def _risk_approval_with_execution_preflight(
+    risk_approval: RiskApproval | None,
+    execution_preflight: OrderPreflightResult | None,
+) -> RiskApproval | None:
+    if risk_approval is None or execution_preflight is None or execution_preflight.allowed:
+        return risk_approval
+    return RiskApproval(
+        decision=RiskDecision.REJECTED,
+        units=Decimal("0"),
+        risk_amount=risk_approval.risk_amount,
+        reward_to_risk=risk_approval.reward_to_risk,
+        reasons=risk_approval.reasons + (f"execution_preflight_failed:{execution_preflight.reason}",),
     )
 
 

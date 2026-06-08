@@ -1,5 +1,5 @@
 from forex_bot.config import ExecutionConfig
-from forex_bot.execution.base import ExecutionClient, ExecutionDiagnostics, ExecutionProviderError
+from forex_bot.execution.base import ExecutionClient, ExecutionDiagnostics, ExecutionProviderError, OrderPreflightResult
 from forex_bot.execution.mt5 import Mt5ExecutionClient
 from forex_bot.models import ExecutionProvider
 
@@ -21,6 +21,14 @@ class NoExecutionClient:
 
     def submit_order(self, request, ledger=None):
         raise ExecutionProviderError("No execution provider is configured.")
+
+    def preflight_order(self, request) -> OrderPreflightResult:
+        return OrderPreflightResult(
+            allowed=False,
+            reason="No execution provider is configured.",
+            symbol=request.symbol,
+            requested_units=request.units,
+        )
 
 
 def create_execution_client(config: ExecutionConfig) -> ExecutionClient:

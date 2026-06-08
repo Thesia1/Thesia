@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 
 from forex_bot.config import ExecutionConfig
-from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderSubmissionRequest, OrderSubmissionResult
+from forex_bot.execution.base import ExecutionDiagnostics, ExecutionProviderError, OrderPreflightResult, OrderSubmissionRequest, OrderSubmissionResult
 from forex_bot.execution.ledger import FileOrderLedger
 from forex_bot.models import Direction
 from forex_bot.symbols import mt5_symbol_candidates
@@ -272,6 +272,48 @@ class Mt5ExecutionClient:
         finally:
             mt5.shutdown()
 
+    def preflight_order(self, request: OrderSubmissionRequest) -> OrderPreflightResult:
+        if not self.config.order_placement_enabled:
+            return OrderPreflightResult(
+                allowed=False,
+                reason="Order placement is disabled. Set EXECUTION_ENABLE_ORDER_PLACEMENT=true only after live readiness is complete.",
+                symbol=request.symbol,
+                requested_units=request.units,
+            )
+
+        mt5 = self._load_mt5()
+        self._initialize_mt5(mt5)
+        try:
+            symbol, _, info = self._resolve_symbol_for_order(mt5, request.symbol)
+            try:
+                volume = _units_to_volume(request.units, info)
+            except ExecutionProviderError as error:
+                return _order_preflight_from_symbol_info(
+                    allowed=False,
+                    reason=str(error),
+                    request=request,
+                    symbol=symbol,
+                    symbol_info=info,
+                    volume=Decimal("0"),
+                )
+            return _order_preflight_from_symbol_info(
+                allowed=True,
+                reason="MT5 order size meets symbol minimum volume.",
+                request=request,
+                symbol=symbol,
+                symbol_info=info,
+                volume=volume,
+            )
+        except ExecutionProviderError as error:
+            return OrderPreflightResult(
+                allowed=False,
+                reason=str(error),
+                symbol=request.symbol,
+                requested_units=request.units,
+            )
+        finally:
+            mt5.shutdown()
+
     def _load_mt5(self):
         try:
             import MetaTrader5 as mt5
@@ -484,3 +526,24 @@ def _units_to_volume(units: Decimal, symbol_info) -> Decimal:
     if volume > volume_max:
         raise ExecutionProviderError(f"Calculated MT5 volume {volume} is above symbol maximum {volume_max}.")
     return volume
+
+
+def _order_preflight_from_symbol_info(
+    *,
+    allowed: bool,
+    reason: str,
+    request: OrderSubmissionRequest,
+    symbol: str,
+    symbol_info,
+    volume: Decimal,
+) -> OrderPreflightResult:
+    return OrderPreflightResult(
+        allowed=allowed,
+        reason=reason,
+        symbol=symbol,
+        requested_units=request.units,
+        volume=volume,
+        volume_min=Decimal(str(getattr(symbol_info, "volume_min", "0.01") or "0.01")),
+        volume_step=Decimal(str(getattr(symbol_info, "volume_step", "0.01") or "0.01")),
+        contract_size=Decimal(str(getattr(symbol_info, "trade_contract_size", 100000) or 100000)),
+    )

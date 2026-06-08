@@ -357,6 +357,38 @@ class ExecutionProviderTest(unittest.TestCase):
 
         self.assertEqual(result.state, "DUPLICATE_BLOCKED")
 
+    def test_mt5_preflight_blocks_volume_below_symbol_minimum(self):
+        client = create_execution_client(
+            ExecutionConfig(
+                provider=ExecutionProvider.MT5,
+                environment=BrokerEnvironment.LIVE,
+                mt5_login="12345",
+                mt5_password="secret",
+                mt5_server="Deriv-Live",
+                order_placement_enabled=True,
+            )
+        )
+        mt5 = _ready_mt5_mock()
+
+        with patch.dict("sys.modules", {"MetaTrader5": mt5}):
+            result = client.preflight_order(
+                OrderSubmissionRequest(
+                    symbol="EUR_JPY",
+                    direction=Direction.SELL,
+                    units=Decimal("38"),
+                    entry_price=Decimal("184.848"),
+                    stop_loss=Decimal("184.978"),
+                    take_profit=Decimal("184.588"),
+                    strategy_decision_id="decision-1",
+                    idempotency_key="decision-1:EUR_JPY",
+                )
+            )
+
+        self.assertFalse(result.allowed)
+        self.assertIn("below symbol minimum", result.reason)
+        self.assertEqual(result.requested_units, Decimal("38"))
+        self.assertEqual(result.volume_min, Decimal("0.01"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,9 +8,9 @@ import unittest
 from forex_bot.__main__ import autotrade_cycle_response, execute_live_response, persist_scan_result, scan_pair, scan_pair_response, scan_pairs_response, to_primitive
 from forex_bot.brokers.base import MarketSnapshot
 from forex_bot.config import BrokerConfig, BotConfig, ExecutionConfig, NewsConfig
-from forex_bot.execution.base import ExecutionDiagnostics, OrderSubmissionResult
+from forex_bot.execution.base import ExecutionDiagnostics, OrderPreflightResult, OrderSubmissionResult
 from forex_bot.fixtures import load_fixture_candles
-from forex_bot.models import BotMode, BrokerEnvironment, BrokerProvider, Candle, ExecutionProvider, InstrumentSpec, SignalState, Timeframe
+from forex_bot.models import BotMode, BrokerEnvironment, BrokerProvider, Candle, ExecutionProvider, InstrumentSpec, RiskDecision, SignalState, Timeframe
 
 
 class CliTest(unittest.TestCase):
@@ -285,6 +285,33 @@ class CliTest(unittest.TestCase):
         self.assertEqual(response.results[0].submission.state, "ACCEPTED")
         self.assertEqual(len(fake_execution.submitted_requests), 1)
 
+    def test_autotrade_cycle_blocks_when_execution_preflight_rejects_size(self):
+        fake_execution = FakeExecutionClient(
+            preflight=OrderPreflightResult(
+                allowed=False,
+                reason="Calculated MT5 volume 0.00 is below symbol minimum 0.01.",
+                symbol="EURUSD",
+                requested_units=Decimal("38"),
+                volume_min=Decimal("0.01"),
+            )
+        )
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=_live_ready_config(),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=FakeBrokerClient()), patch(
+            "forex_bot.__main__.create_execution_client",
+            return_value=fake_execution,
+        ):
+            response = autotrade_cycle_response(("EUR_USD",), submit_live_orders=True)
+
+        self.assertEqual(response.candidate_count, 1)
+        self.assertEqual(response.allowed_count, 0)
+        self.assertEqual(response.submitted_count, 0)
+        self.assertFalse(response.results[0].policy.allowed)
+        self.assertEqual(response.results[0].risk_approval.decision, RiskDecision.REJECTED)
+        self.assertIn("execution_preflight_failed", response.results[0].risk_approval.reasons[0])
+        self.assertEqual(fake_execution.submitted_requests, [])
+
 
 class FakeBrokerClient:
     def get_market_snapshot(self, symbol, granularity=Timeframe.H1, count=200):
@@ -305,9 +332,10 @@ class FakeBrokerClient:
 class FakeExecutionClient:
     provider_name = "mt5"
 
-    def __init__(self):
+    def __init__(self, preflight=None):
         self.diagnose_calls = []
         self.submitted_requests = []
+        self.preflight = preflight or OrderPreflightResult(allowed=True, reason="ok")
 
     def diagnose(self, probe_terminal=False, symbols=()):
         self.diagnose_calls.append((probe_terminal, symbols))
@@ -331,6 +359,9 @@ class FakeExecutionClient:
             broker_deal_id="deal-1",
             message="accepted",
         )
+
+    def preflight_order(self, request):
+        return self.preflight
 
 
 def _live_ready_config() -> BotConfig:

@@ -59,10 +59,25 @@ class OrderSubmissionResult:
     raw_response: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class OrderPreflightResult:
+    allowed: bool
+    reason: str
+    symbol: str = ""
+    requested_units: Decimal = Decimal("0")
+    volume: Decimal = Decimal("0")
+    volume_min: Decimal = Decimal("0")
+    volume_step: Decimal = Decimal("0")
+    contract_size: Decimal = Decimal("0")
+
+
 class ExecutionClient(Protocol):
     provider_name: str
 
     def diagnose(self) -> ExecutionDiagnostics:
+        raise NotImplementedError
+
+    def preflight_order(self, request: OrderSubmissionRequest) -> OrderPreflightResult:
         raise NotImplementedError
 
     def submit_order(self, request: OrderSubmissionRequest, ledger=None) -> OrderSubmissionResult:
