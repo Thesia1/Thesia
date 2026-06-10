@@ -15,10 +15,12 @@ Operational playbook:
 - The idempotency ledger must block duplicate submissions for the same strategy decision.
 - A trade can only be discussed as executable when deterministic strategy state is TRADE_CANDIDATE and the risk gate approves it.
 - Current executable strategies are fresh_strong_zone_continuation and trendline_zone_sequence.
+- Top-down market bias is a context and safety layer: Monthly sets major direction, Weekly confirms or challenges, Daily defines active trading direction, H4 refines the trade idea, and H1/M30/M15 or lower timeframes are entry timing only.
+- The market-bias report can classify Long-Term Buy, Short-Term Buy, Long-Term Sell, Short-Term Sell, or No Trade / Wait; it can reject a candidate that conflicts with strong higher-timeframe direction, but it cannot create a trade without deterministic strategy confirmation.
 - BUY logic: base candle, bullish departure, departure close above an active opposing supply zone, return to demand zone, bullish close above demand zone.
 - SELL logic: base candle, bearish departure, departure close below an active opposing demand zone, return to supply zone, bearish close below supply zone.
-- Sequence BUY logic: higher-timeframe context should align when supplied, price respects an ascending trendline from higher swing lows, an untested demand zone is near that trendline on the current return, and first touch can produce an immediate buy candidate without candle-close confirmation.
-- Sequence SELL logic: higher-timeframe context should align when supplied, price respects a descending trendline from lower swing highs, an untested supply zone is near that trendline on the current return, and first touch can produce an immediate sell candidate without candle-close confirmation.
+- Sequence BUY logic: higher-timeframe context should align when supplied, market structure must be bullish with higher highs and higher lows, price respects an ascending trendline from higher swing lows, a fresh demand zone must be created by a strong bullish impulse away from a base, that demand zone must be near the trendline on the current pullback, and first touch can produce an immediate buy candidate without candle-close confirmation.
+- Sequence SELL logic: higher-timeframe context should align when supplied, market structure must be bearish with lower highs and lower lows, price respects a descending trendline from lower swing highs, a fresh supply zone must be created by a strong bearish impulse away from a base, that supply zone must be near the trendline on the current pullback, and first touch can produce an immediate sell candidate without candle-close confirmation.
 - Fresh-zone logic: reject zones invalidated or already retested before the current return.
 - Curve logic: buys require the 0-25% low-curve area; sells require the 0-25% high-curve area when higher-timeframe context is supplied.
 - Target logic: use nearest opposing zone when it preserves minimum reward; otherwise use the minimum fixed reward target.
@@ -38,8 +40,8 @@ Documented visual concepts from strategy_docs sessions:
 - Confirmation rules from the session docs: monthly zones need lower-timeframe confirmation around the third touch; weekly/daily zones need confirmation around the second touch; daily is marked risky.
 - Inheritance and flip zones are documented context zones; flip zones act like retracement/support-resistance areas where CP entries may form.
 - Trendline rules: draw trendlines from the last two swing highs or lows; trend change needs trendline break plus opposing zone removal.
-- Supply-in-sequence context: a supply zone below a descending trendline is a preferred bearish continuation context; the expected behavior is rejection/drop from that supply in sequence, then continued downside if the sequence confirms.
-- Demand-in-sequence context: a demand zone above an ascending trendline is a preferred bullish continuation context; first touch of an untested demand zone near the trendline can be an immediate buy candidate when risk and execution gates pass.
+- Supply-in-sequence context: a supply zone below a descending trendline is a preferred bearish continuation context only when the market is in a downtrend, price is forming lower highs and lower lows, the trendline connects clear major lower highs, the supply zone is fresh and made by strong bearish impulse, and price pulls back into the supply-zone/trendline confluence. First touch of that valid area can be an immediate sell candidate when risk and execution gates pass.
+- Demand-in-sequence context: a demand zone above an ascending trendline is a preferred bullish continuation context only when the market is in an uptrend, price is forming higher highs and higher lows, the trendline connects clear major higher lows, the demand zone is fresh and made by strong bullish impulse, and price pulls back into the demand-zone/trendline confluence. First touch of that valid area can be an immediate buy candidate when risk and execution gates pass.
 - High/low curve rules: market moves between monthly supply and demand; 0-25% near monthly supply is seller area, 0-25% near monthly demand is buyer area, and the middle 50% is not a clean edge.
 - These visual concepts are playbook context only until deterministic detectors and tests exist.
 """
@@ -77,13 +79,14 @@ def assess_playbook_grounding(messages: list[AgentMessage]) -> PlaybookAlignment
         "sell_rules": ("bearish departure", "opposing demand zone", "supply zone"),
         "no_trade_on_failed_rules": ("no trade",),
         "visual_docs": ("stairs zones", "cp levels", "trendline", "supply-in-sequence", "demand-in-sequence", "seller area", "buyer area"),
+        "market_bias": ("top-down market bias", "long-term buy", "short-term sell", "no trade / wait"),
     }
     missing = tuple(
         topic
         for topic, needles in required.items()
         if not all(needle in content for needle in needles)
     )
-    preview = messages[0].content[:5000] if messages else ""
+    preview = messages[0].content[:7000] if messages else ""
     return PlaybookAlignmentReport(
         grounded=not missing,
         missing_topics=missing,

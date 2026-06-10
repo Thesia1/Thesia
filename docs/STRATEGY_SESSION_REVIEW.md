@@ -85,13 +85,37 @@ Key concept:
 - A demand zone above an ascending trendline is a preferred bullish continuation context.
 - When price returns to an untested demand zone near the ascending trendline, the documented action is an immediate buy candidate.
 - The same first-touch and trendline-nearness rules apply to supply in sequence and demand in sequence.
+- The supply-in-sequence visual rule requires a bearish market with lower highs and lower lows, a descending trendline through/near major lower highs, a fresh base before a strong bearish impulse, and a pullback that touches the supply zone and trendline area together.
+- The demand-in-sequence visual rule requires a bullish market with higher highs and higher lows, an ascending trendline through/near major higher lows, a fresh base before a strong bullish impulse, and a pullback that touches the demand zone and trendline area together.
+- Weak supply examples are rejected when the zone is far from the trendline, the trendline is unclear, the zone has already been tested, market structure is no longer bearish, price breaks above the trendline or supply zone with strength, or the impulse leaving the base is weak/choppy.
+- Weak demand examples are rejected when the zone is far from the trendline, the trendline is unclear, the zone has already been tested, market structure is no longer bullish, price slices through the zone, or the impulse leaving the base is weak/choppy.
 
 Agent interpretation:
 
 - The agent should remember this as bullish and bearish playbook context.
 - The first deterministic implementation is `trendline_zone_sequence`.
-- `trendline_zone_sequence` can produce immediate candidates on first touch of an untested zone near the correct trendline; risk, spread, broker reconciliation, live-mode, and idempotency gates still control execution.
+- `trendline_zone_sequence` can produce immediate candidates on first touch of an untested zone near the correct trendline; it now includes stricter demand-in-sequence checks for higher highs/higher lows and stricter supply-in-sequence checks for lower highs/lower lows, pullback confluence, and strong impulse departure. Risk, spread, broker reconciliation, live-mode, idempotency, and MT5 minimum-volume preflight gates still control execution.
 - The current implementation uses a simplified two-swing trendline and fixed 2R first target; full multi-timeframe challenge-management rules remain future work.
+
+## Multiple-Timeframe Market-Bias Addendum
+
+Key concept:
+
+- Monthly defines major direction and broad pressure.
+- Weekly confirms or challenges monthly.
+- Daily defines the active trading direction.
+- H4 refines the trade idea.
+- H1/M30/M15 and lower timeframes are for timing only.
+- Lower timeframes should not override strong higher-timeframe direction unless the setup is explicitly classified as short-term and the higher-timeframe context is not strongly opposed.
+- If the structure is unclear, conflicting, or ranging, the correct decision is wait.
+
+Agent interpretation:
+
+- The first deterministic implementation is `market_bias` in scan output.
+- It reports Monthly, Weekly, Daily, H4, and entry-timeframe bias.
+- It classifies the asset as `Long-Term Buy`, `Short-Term Buy`, `Long-Term Sell`, `Short-Term Sell`, or `No Trade / Wait`.
+- It can reject an otherwise detected strategy candidate when enough higher-timeframe context exists and the candidate direction conflicts with the top-down read.
+- It cannot force a trade when no deterministic strategy candidate exists.
 
 ## Current Translation Status
 
@@ -101,6 +125,7 @@ Implemented or partially implemented:
 - Fresh-zone lifecycle and retest rejection.
 - 0-25% high/low curve filter.
 - Monthly/weekly/daily direction context.
+- Multi-timeframe market-bias classification and candidate-conflict rejection.
 - Nearest opposing zone target.
 - Trendline-zone sequence first-touch entries.
 - Risk gate and execution policy.

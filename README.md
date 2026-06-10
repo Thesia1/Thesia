@@ -28,6 +28,8 @@ Implemented:
 - Free news fallback and agent fallback scaffolds
 - Active opposite-zone object removal for the fresh strong zone strategy
 - Monthly/weekly/daily top-down direction gate for broker scans
+- Multi-timeframe market-bias report for Monthly, Weekly, Daily, H4, and entry timing
+- Strong top-down candidate-conflict gate for rejecting trades against higher-timeframe direction
 - Scheduled economic-calendar blackout gate
 - Deriv MT5 reconciliation probe for account, positions, orders, margin, symbol metadata, and ticks
 - Deriv MT5 guarded order-submission path
@@ -111,6 +113,8 @@ For Windows Deriv MT5 probe failures such as `(-10005, 'IPC timeout')`, see [Der
 
 For the newly reviewed Session 1-3 strategy pictures and translation notes, see [Strategy Sessions 1-3 Review](docs/STRATEGY_SESSION_REVIEW.md).
 
+For the top-down market-bias layer inspired by the attached multiple-timeframe analysis notes, see [Multi-Timeframe Market Bias Layer](docs/MULTI_TIMEFRAME_MARKET_BIAS.md).
+
 Check whether the agent prompt is grounded in the current playbook:
 
 ```bash
@@ -167,6 +171,8 @@ Run a scan with optional higher-timeframe confirmation:
 python3 -m forex_bot scan --pair EUR_USD --granularity H1 --higher-timeframe H4 --count 200
 ```
 
+That output includes `market_bias`, which reports Monthly, Weekly, Daily, H4, and entry-timeframe bias, trade classification, confidence, and whether a candidate conflicts with the higher-timeframe read.
+
 Write scan records to a JSONL file:
 
 ```bash
@@ -180,6 +186,38 @@ python3 -m forex_bot scan --pair EUR_USD --paper-preview
 ```
 
 `--paper-preview` does not place, submit, or reserve an order. It only applies the deterministic risk gate to the candidate and reports the simulated units, entry, stop, and target when approved.
+
+Run one autonomous scan/trade cycle across the forex basket without submitting live orders:
+
+```bash
+python3 -m forex_bot autotrade --pairs GBPUSD,EURUSD,USDJPY,XAUUSD,GBPJPY,AUDUSD,USDCAD,USDCHF,EURJPY --show-all-strategies
+```
+
+For the clearest top-down read, include H4:
+
+```bash
+python3 -m forex_bot autotrade --pairs GBPUSD,EURUSD,USDJPY,XAUUSD,GBPJPY,AUDUSD,USDCAD,USDCHF,EURJPY --granularity H1 --higher-timeframe H4 --show-all-strategies
+```
+
+Send a setup alert when any pair becomes a deterministic `TRADE_CANDIDATE`:
+
+```bash
+python3 -m forex_bot autotrade --pairs GBPUSD,EURUSD,USDJPY,XAUUSD,GBPJPY,AUDUSD,USDCAD,USDCHF,EURJPY --show-all-strategies --notify-setups
+```
+
+Submit at most one live order only when strategy, risk, execution reconciliation, duplicate-order protection, and broker preflight gates all pass:
+
+```bash
+python3 -m forex_bot autotrade --pairs GBPUSD,EURUSD,USDJPY,XAUUSD,GBPJPY,AUDUSD,USDCAD,USDCHF,EURJPY --max-orders 1 --submit-live-orders --show-all-strategies --notify-setups
+```
+
+For notifications, configure either Discord or Telegram in `.env`:
+
+```bash
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+```
 
 ## News Sources
 

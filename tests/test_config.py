@@ -165,6 +165,44 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.agent.openrouter_api_key, "openrouter-key")
         self.assertEqual(config.agent.openrouter_model, "openrouter/auto")
 
+    def test_alert_config_loads_discord_and_telegram(self):
+        with TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "DISCORD_WEBHOOK_URL=https://discord.example/webhook",
+                        "TELEGRAM_BOT_TOKEN=telegram-token",
+                        "TELEGRAM_CHAT_ID=12345",
+                    ]
+                )
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                config = load_config_from_env(env_file)
+
+        self.assertEqual(config.alerts.discord_webhook_url, "https://discord.example/webhook")
+        self.assertEqual(config.alerts.telegram_bot_token, "telegram-token")
+        self.assertEqual(config.alerts.telegram_chat_id, "12345")
+
+    def test_alert_config_ignores_placeholder_values(self):
+        with TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "DISCORD_WEBHOOK_URL=your_discord_webhook_url_here",
+                        "TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here",
+                        "TELEGRAM_CHAT_ID=your_telegram_chat_id_here",
+                    ]
+                )
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                config = load_config_from_env(env_file)
+
+        self.assertEqual(config.alerts.discord_webhook_url, "")
+        self.assertEqual(config.alerts.telegram_bot_token, "")
+        self.assertEqual(config.alerts.telegram_chat_id, "")
+
 
 if __name__ == "__main__":
     unittest.main()

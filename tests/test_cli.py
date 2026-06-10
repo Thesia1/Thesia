@@ -10,7 +10,8 @@ from forex_bot.brokers.base import MarketSnapshot
 from forex_bot.config import BrokerConfig, BotConfig, ExecutionConfig, NewsConfig
 from forex_bot.execution.base import ExecutionDiagnostics, OrderPreflightResult, OrderSubmissionResult
 from forex_bot.fixtures import load_fixture_candles
-from forex_bot.models import BotMode, BrokerEnvironment, BrokerProvider, Candle, ExecutionProvider, InstrumentSpec, RiskDecision, SignalState, Timeframe
+from forex_bot.models import BotMode, BrokerEnvironment, BrokerProvider, Candle, Direction, ExecutionProvider, InstrumentSpec, RiskDecision, SignalState, StrategyDecision, Timeframe, TradeCandidate
+from forex_bot.notifications import NotificationResult
 
 
 class CliTest(unittest.TestCase):
@@ -100,6 +101,8 @@ class CliTest(unittest.TestCase):
             [decision.setup_name for decision in response.all_strategy_decisions],
             ["fresh_strong_zone_continuation", "trendline_zone_sequence"],
         )
+        self.assertIsNotNone(response.market_bias)
+        self.assertEqual(response.market_bias.pair_asset, "EUR_USD")
 
     def test_scan_response_hides_all_strategy_decisions_by_default(self):
         response = scan_pair_response("EUR_USD", source="fixture")
@@ -122,6 +125,44 @@ class CliTest(unittest.TestCase):
         self.assertTrue(response.execution.can_place_orders)
         self.assertTrue(response.execution.reconciliation_ok)
         self.assertEqual(fake_execution.diagnose_calls, [(True, ("EUR_USD",))])
+
+    def test_scan_market_bias_gate_rejects_conflicting_candidate(self):
+        candidate = TradeCandidate(
+            symbol="EUR_USD",
+            direction=Direction.BUY,
+            entry_price=Decimal("1.1000"),
+            stop_loss=Decimal("1.0900"),
+            take_profit=Decimal("1.1200"),
+            spread_pips=Decimal("0.8"),
+            setup_name="trendline_zone_sequence",
+            strategy_decision_id="buy-candidate",
+        )
+        decision = StrategyDecision(
+            id="buy-candidate",
+            symbol="EUR_USD",
+            state=SignalState.TRADE_CANDIDATE,
+            setup_name="trendline_zone_sequence",
+            created_at=__import__("datetime").datetime.fromisoformat("2026-06-04T21:00:00+00:00"),
+            evidence=(),
+            candidate=candidate,
+        )
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=BotConfig(
+                broker=BrokerConfig(provider=BrokerProvider.OANDA, environment=BrokerEnvironment.PRACTICE),
+                execution=ExecutionConfig(provider=ExecutionProvider.MT5),
+            ),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=BearishContextBrokerClient()), patch(
+            "forex_bot.__main__._evaluate_all_strategies",
+            return_value=(decision,),
+        ):
+            response = scan_pair_response("EUR_USD", source="broker", higher_timeframe=Timeframe.H4)
+
+        self.assertEqual(response.market_bias.trade_classification, "Long-Term Sell")
+        self.assertTrue(response.market_bias.candidate_conflict)
+        self.assertEqual(response.decision.state, SignalState.NO_TRADE)
+        self.assertIsNone(response.decision.candidate)
+        self.assertEqual(response.decision.evidence[-1].rule, "top_down_market_bias")
 
     def test_paper_preview_rejects_no_trade_candidate(self):
         candles = [
@@ -312,6 +353,22 @@ class CliTest(unittest.TestCase):
         self.assertIn("execution_preflight_failed", response.results[0].risk_approval.reasons[0])
         self.assertEqual(fake_execution.submitted_requests, [])
 
+    def test_autotrade_cycle_notifies_when_setup_candidate_appears(self):
+        fake_execution = FakeExecutionClient()
+        fake_notifier = FakeNotifier()
+        with patch(
+            "forex_bot.__main__.load_config_from_env",
+            return_value=_live_ready_config(),
+        ), patch("forex_bot.__main__.create_broker_client", return_value=FakeBrokerClient()), patch(
+            "forex_bot.__main__.create_execution_client",
+            return_value=fake_execution,
+        ):
+            response = autotrade_cycle_response(("EUR_USD",), notify_setups=True, notifier=fake_notifier)
+
+        self.assertEqual(len(fake_notifier.calls), 1)
+        self.assertEqual(fake_notifier.calls[0][0].symbol, "EUR_USD")
+        self.assertEqual(response.results[0].notification_results[0].state, "SENT")
+
 
 class FakeBrokerClient:
     def get_market_snapshot(self, symbol, granularity=Timeframe.H1, count=200):
@@ -323,6 +380,19 @@ class FakeBrokerClient:
             ]
         return MarketSnapshot(
             candles=candles,
+            instrument=_eur_usd(),
+            spread_pips=Decimal("0.8"),
+            provider="oanda",
+        )
+
+
+class BearishContextBrokerClient:
+    def get_market_snapshot(self, symbol, granularity=Timeframe.H1, count=200):
+        closes = ("1.2000", "1.1800", "1.1600", "1.1400")
+        if granularity == Timeframe.H1:
+            closes = ("1.1500", "1.1400", "1.1300", "1.1200")
+        return MarketSnapshot(
+            candles=_series(symbol, granularity, closes),
             instrument=_eur_usd(),
             spread_pips=Decimal("0.8"),
             provider="oanda",
@@ -364,6 +434,15 @@ class FakeExecutionClient:
         return self.preflight
 
 
+class FakeNotifier:
+    def __init__(self):
+        self.calls = []
+
+    def send_setup_alert(self, decision, risk_approval, policy):
+        self.calls.append((decision, risk_approval, policy))
+        return (NotificationResult("SENT", "fake", "sent"),)
+
+
 def _live_ready_config() -> BotConfig:
     return BotConfig(
         mode=BotMode.AUTONOMOUS_LIVE,
@@ -390,6 +469,28 @@ def _eur_usd() -> InstrumentSpec:
         margin_rate=Decimal("0.0333"),
         max_spread_pips=Decimal("2"),
     )
+
+
+def _series(symbol: str, timeframe: Timeframe, closes: tuple[str, ...]) -> list[Candle]:
+    start = __import__("datetime").datetime.fromisoformat("2026-06-01T00:00:00+00:00")
+    candles = []
+    previous = Decimal(closes[0])
+    for index, close_text in enumerate(closes):
+        close = Decimal(close_text)
+        open_price = previous
+        candles.append(
+            Candle(
+                symbol=symbol,
+                timeframe=timeframe,
+                timestamp=start + __import__("datetime").timedelta(hours=index),
+                open=open_price,
+                high=max(open_price, close) + Decimal("0.0010"),
+                low=min(open_price, close) - Decimal("0.0010"),
+                close=close,
+            )
+        )
+        previous = close
+    return candles
 
 
 if __name__ == "__main__":

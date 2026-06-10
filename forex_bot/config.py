@@ -82,6 +82,13 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class AlertConfig:
+    discord_webhook_url: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+
+@dataclass(frozen=True)
 class BotConfig:
     mode: BotMode = BotMode.WATCH
     broker: BrokerConfig = field(default_factory=BrokerConfig)
@@ -89,6 +96,7 @@ class BotConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
+    alerts: AlertConfig = field(default_factory=AlertConfig)
     explicit_live_enabled: bool = False
 
     def validate(self) -> None:
@@ -173,6 +181,11 @@ def load_config_from_env(env_file: str | Path | None = ".env") -> BotConfig:
             openrouter_model=_get_config_value(values, "OPENROUTER_MODEL", "openrouter/auto"),
             openrouter_base_url=_get_config_value(values, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         ),
+        alerts=AlertConfig(
+            discord_webhook_url=_clean_placeholder(_get_config_value(values, "DISCORD_WEBHOOK_URL", "")),
+            telegram_bot_token=_clean_placeholder(_get_config_value(values, "TELEGRAM_BOT_TOKEN", "")),
+            telegram_chat_id=_clean_placeholder(_get_config_value(values, "TELEGRAM_CHAT_ID", "")),
+        ),
         explicit_live_enabled=explicit_live_enabled,
     )
     config.validate()
@@ -181,6 +194,13 @@ def load_config_from_env(env_file: str | Path | None = ".env") -> BotConfig:
 
 def _get_config_value(values: dict[str, str], key: str, default: str) -> str:
     return environ.get(key, values.get(key, default))
+
+
+def _clean_placeholder(value: str) -> str:
+    stripped = value.strip()
+    if not stripped or stripped.startswith("your_"):
+        return ""
+    return stripped
 
 
 def _load_env_values(env_file: str | Path | None) -> dict[str, str]:

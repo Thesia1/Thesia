@@ -38,6 +38,8 @@ Implemented concepts:
 - Bearish candle-close confirmation
 - Optional single higher-timeframe directional confirmation
 - Monthly, weekly, and daily directional alignment gate when broker context is supplied
+- Multi-timeframe market-bias report across Monthly, Weekly, Daily, H4, and entry timing
+- Candidate-conflict rejection when a deterministic candidate trades against strong higher-timeframe context
 - Zone freshness tracking before the current return
 - Retest count rejection for previously touched zones
 - Zone invalidation rejection
@@ -45,6 +47,11 @@ Implemented concepts:
 - Trendline-zone sequence first-touch strategy:
   - demand in sequence above an ascending trendline
   - supply in sequence below a descending trendline
+  - bullish demand sequence requires higher highs and higher lows
+  - bearish supply sequence requires lower highs and lower lows
+  - demand-zone/trendline confluence is checked at the pullback touch
+  - supply-zone/trendline confluence is checked at the pullback touch
+  - departure from the base must be a strong impulse, not weak/choppy price action
   - untested zone / first-touch requirement
   - immediate candidate on touch without candle-close confirmation
 - Nearest opposing zone target selection when it preserves minimum reward
@@ -117,6 +124,12 @@ These are represented in code, but simplified:
   - Current implementation follows the Echo strategy_docs rule that the 0-25% area near the low curve is mainly for buyers, and the 0-25% area near the high curve is mainly for sellers.
   - Monthly, weekly, and daily direction are now first-class strategy inputs for broker scans.
   - The full nested monthly/weekly/daily curve hierarchy remains a future refinement.
+
+- Multi-timeframe market bias:
+  - Current implementation reports Monthly, Weekly, Daily, H4, and entry-timeframe bias.
+  - The report classifies each asset as long-term buy, short-term buy, long-term sell, short-term sell, or wait.
+  - It can reject an existing deterministic candidate when enough higher-timeframe context exists and the candidate conflicts with that context.
+  - It does not create trades without a deterministic strategy candidate.
 
 - News blackout:
   - Current implementation blocks trades around configured scheduled economic-calendar events that match either currency in the pair and meet the configured impact threshold.
@@ -224,6 +237,7 @@ Current tests confirm:
 - Generated trade candidate can pass the risk gate.
 - Opposing zone object removal.
 - Monthly/weekly/daily alignment.
+- Multi-timeframe market-bias classification and candidate-conflict rejection.
 - Scheduled economic-calendar blackout.
 - Deriv MT5 reconciliation diagnostics.
 - Deriv MT5 guarded order-submission path.

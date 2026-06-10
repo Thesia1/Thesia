@@ -10,6 +10,7 @@ from sys import stderr, exit
 
 from forex_bot.agent.playbook import assess_playbook_grounding, build_playbook_messages
 from forex_bot.agent.policy import AgentAutonomyDecision, evaluate_agent_autonomy
+from forex_bot.analysis.market_bias import MarketBiasReport, build_market_bias_report
 from forex_bot.brokers.base import BrokerConfigError
 from forex_bot.brokers.factory import create_broker_client
 from forex_bot.brokers.oanda import OandaClient
@@ -21,6 +22,7 @@ from forex_bot.execution.ledger import FileOrderLedger
 from forex_bot.fixtures import load_fixture_candles
 from forex_bot.models import AccountState, BotMode, BrokerEnvironment, BrokerProvider, Candle, InstrumentSpec, RiskApproval, RiskDecision, RiskLimits, RuleEvidence, SignalState, StrategyDecision, Timeframe
 from forex_bot.news.blackout import NewsBlackoutDecision, blackout_from_config
+from forex_bot.notifications import NotificationResult, create_notifier
 from forex_bot.paper import PaperTradePreview, preview_paper_trade
 from forex_bot.playbook.coverage import current_playbook_coverage
 from forex_bot.strategy import StrategyContext
@@ -57,6 +59,7 @@ class MarketDataProvenance:
 class ScanResponse:
     decision: StrategyDecision
     market_data: MarketDataProvenance
+    market_bias: MarketBiasReport | None = None
     execution: ExecutionDiagnostics | None = None
     paper_preview: PaperTradePreview | None = None
     news_blackout: NewsBlackoutDecision | None = None
@@ -94,6 +97,7 @@ class AutoTradePairResult:
     idempotency_key: str = ""
     submitted: bool = False
     submission: OrderSubmissionResult | None = None
+    notification_results: tuple[NotificationResult, ...] = ()
     reason: str = ""
 
 
@@ -148,6 +152,7 @@ def main() -> None:
     autotrade.add_argument("--max-orders", type=int, default=1)
     autotrade.add_argument("--submit-live-orders", action="store_true")
     autotrade.add_argument("--show-all-strategies", action="store_true")
+    autotrade.add_argument("--notify-setups", action="store_true")
 
     doctor = subparsers.add_parser("doctor")
     doctor_subparsers = doctor.add_subparsers(dest="doctor_target", required=True)
@@ -212,6 +217,7 @@ def main() -> None:
                 max_orders=args.max_orders,
                 submit_live_orders=args.submit_live_orders,
                 show_all_strategies=args.show_all_strategies,
+                notify_setups=args.notify_setups,
             )
         except (BrokerConfigError, ExecutionProviderError, ValueError) as error:
             print(json.dumps({"error": str(error), "source": "autotrade"}, indent=2), file=stderr)
@@ -396,6 +402,17 @@ def scan_pair_response(
         decision = _apply_news_blackout(decision, news_blackout)
         if show_all_strategies:
             strategy_decisions = tuple(_apply_news_blackout(item, news_blackout) for item in strategy_decisions)
+    market_bias = build_market_bias_report(
+        symbol=normalized_pair,
+        monthly_candles=monthly_candles,
+        weekly_candles=weekly_candles,
+        daily_candles=daily_candles,
+        h4_candles=_h4_context_candles(granularity, candles, higher_timeframe, higher_timeframe_candles),
+        entry_candles=candles,
+        strategy_decision=decision,
+        all_strategy_decisions=strategy_decisions,
+    )
+    decision = _apply_market_bias_gate(decision, market_bias)
     paper = None
     if paper_preview:
         paper = _paper_preview(
@@ -417,6 +434,7 @@ def scan_pair_response(
             candles=candles,
             spread_pips=spread_pips,
         ),
+        market_bias=market_bias,
         execution=(
             create_execution_client(config.execution).diagnose(
                 probe_terminal=probe_execution,
@@ -512,6 +530,8 @@ def autotrade_cycle_response(
     max_orders: int = 1,
     submit_live_orders: bool = False,
     show_all_strategies: bool = False,
+    notify_setups: bool = False,
+    notifier=None,
 ) -> AutoTradeCycleResponse:
     if not pairs:
         raise ValueError("autotrade requires at least one pair.")
@@ -520,6 +540,7 @@ def autotrade_cycle_response(
 
     config = load_config_from_env()
     execution_client = create_execution_client(config.execution)
+    notifier = notifier or create_notifier(config.alerts)
     ledger = FileOrderLedger(config.execution.idempotency_ledger_path)
     results: list[AutoTradePairResult] = []
     submitted_count = 0
@@ -551,7 +572,11 @@ def autotrade_cycle_response(
         )
         submission = None
         submitted = False
+        notification_results: tuple[NotificationResult, ...] = ()
         reason = "execution_policy_blocked"
+
+        if notify_setups and scan.decision.candidate is not None:
+            notification_results = notifier.send_setup_alert(scan.decision, risk_approval, policy)
 
         if policy.allowed:
             if submitted_count >= max_orders:
@@ -580,6 +605,7 @@ def autotrade_cycle_response(
                 idempotency_key=idempotency_key,
                 submitted=submitted,
                 submission=submission,
+                notification_results=notification_results,
                 reason=reason,
             )
         )
@@ -696,6 +722,40 @@ def _apply_news_blackout(decision: StrategyDecision, news_blackout: NewsBlackout
     )
     if not news_blackout.blocked:
         return replace(decision, evidence=evidence)
+    return StrategyDecision(
+        id=decision.id,
+        symbol=decision.symbol,
+        state=SignalState.NO_TRADE,
+        setup_name=decision.setup_name,
+        created_at=decision.created_at,
+        evidence=evidence,
+        candidate=None,
+    )
+
+
+def _h4_context_candles(
+    granularity: Timeframe,
+    candles: list[Candle],
+    higher_timeframe: Timeframe | None,
+    higher_timeframe_candles: list[Candle] | None,
+) -> list[Candle] | None:
+    if granularity == Timeframe.H4:
+        return candles
+    if higher_timeframe == Timeframe.H4:
+        return higher_timeframe_candles
+    return None
+
+
+def _apply_market_bias_gate(decision: StrategyDecision, market_bias: MarketBiasReport | None) -> StrategyDecision:
+    if market_bias is None or not market_bias.candidate_conflict or decision.candidate is None:
+        return decision
+    evidence = decision.evidence + (
+        RuleEvidence(
+            rule="top_down_market_bias",
+            passed=False,
+            detail=market_bias.reason,
+        ),
+    )
     return StrategyDecision(
         id=decision.id,
         symbol=decision.symbol,

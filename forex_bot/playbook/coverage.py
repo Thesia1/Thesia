@@ -62,7 +62,14 @@ def current_playbook_coverage() -> PlaybookCoverageReport:
             source="Echo/Raja",
             state=PlaybookCoverageState.IMPLEMENTED,
             automation_required=True,
-            notes="Monthly, weekly, and daily candle context is supported; incomplete supplied context fails closed.",
+            notes="Monthly, weekly, daily, H4, and entry-timeframe market-bias reporting is supported; incomplete higher-timeframe context cannot force trades.",
+        ),
+        PlaybookConcept(
+            name="book_style_top_down_market_bias",
+            source="Brian Shannon multiple-timeframe analysis addendum",
+            state=PlaybookCoverageState.IMPLEMENTED,
+            automation_required=True,
+            notes="Scan output classifies long-term buy/sell, short-term buy/sell, or wait, and rejects deterministic candidates that conflict with strong higher-timeframe context.",
         ),
         PlaybookConcept(
             name="high_low_curve_location",

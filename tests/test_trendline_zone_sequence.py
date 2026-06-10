@@ -83,6 +83,96 @@ class TrendlineZoneSequenceTest(unittest.TestCase):
         self.assertEqual(decision.state, SignalState.NO_TRADE)
         self.assertIn("No first-touch zone", decision.evidence[-1].detail)
 
+    def test_demand_sequence_requires_higher_highs_and_higher_lows(self):
+        candles = _demand_sequence_fixture()
+        candles[6] = replace(candles[6], low=Decimal("0.9990"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
+    def test_demand_sequence_requires_pullback_near_ascending_trendline(self):
+        candles = _demand_sequence_fixture()
+        candles[-1] = replace(candles[-1], open=Decimal("1.0305"), high=Decimal("1.0310"), low=Decimal("1.0290"), close=Decimal("1.0300"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
+    def test_weak_departure_rejects_demand_zone(self):
+        candles = _demand_sequence_fixture()
+        candles[8] = replace(candles[8], high=Decimal("1.0270"), close=Decimal("1.0262"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
+    def test_supply_sequence_requires_lower_highs_and_lower_lows(self):
+        candles = _supply_sequence_fixture()
+        candles[6] = replace(candles[6], open=Decimal("1.0640"), high=Decimal("1.0660"), low=Decimal("1.0610"), close=Decimal("1.0620"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
+    def test_supply_sequence_requires_pullback_near_descending_trendline(self):
+        candles = _supply_sequence_fixture()
+        candles[-1] = replace(candles[-1], open=Decimal("1.0810"), high=Decimal("1.0820"), low=Decimal("1.0700"), close=Decimal("1.0815"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
+    def test_weak_departure_rejects_supply_zone(self):
+        candles = _supply_sequence_fixture()
+        candles[8] = replace(candles[8], low=Decimal("1.0838"), close=Decimal("1.0840"))
+
+        decision = TrendlineZoneSequence().evaluate(
+            StrategyContext(
+                symbol="EUR_USD",
+                candles=candles,
+                instrument=_eur_usd(),
+                spread_pips=Decimal("0.8"),
+            )
+        )
+
+        self.assertEqual(decision.state, SignalState.NO_TRADE)
+
 
 def _demand_sequence_fixture() -> list[Candle]:
     return [
@@ -108,11 +198,11 @@ def _supply_sequence_fixture() -> list[Candle]:
         _candle(3, "1.0890", "1.0910", "1.0700", "1.0740"),
         _candle(4, "1.0740", "1.0760", "1.0600", "1.0640"),
         _candle(5, "1.0640", "1.0950", "1.0630", "1.0820"),
-        _candle(6, "1.0820", "1.0860", "1.0780", "1.0800"),
+        _candle(6, "1.0820", "1.0840", "1.0520", "1.0580"),
         _candle(7, "1.0848", "1.0860", "1.0840", "1.0846"),
         _candle(8, "1.0846", "1.0850", "1.0740", "1.0750"),
         _candle(9, "1.0750", "1.0810", "1.0700", "1.0710"),
-        _candle(10, "1.0710", "1.0850", "1.0700", "1.0845"),
+        _candle(10, "1.0710", "1.0860", "1.0700", "1.0845"),
     ]
 
 

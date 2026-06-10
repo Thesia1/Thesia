@@ -22,6 +22,7 @@ from forex_bot.strategy import Strategy, StrategyContext
 class TrendlineZoneSequenceConfig:
     max_base_body_to_range: Decimal = Decimal("0.35")
     min_departure_body_multiple: Decimal = Decimal("2")
+    min_departure_body_to_range: Decimal = Decimal("0.55")
     trendline_proximity_pips: Decimal = Decimal("10")
     stop_buffer_pips: Decimal = Decimal("5")
     min_reward_to_risk: Decimal = Decimal("2")
@@ -61,9 +62,19 @@ class TrendlineZoneSequence(Strategy):
         zone = match.zone
         latest = candles[-1]
         evidence.append(RuleEvidence(
+            "sequence_market_structure",
+            True,
+            self._market_structure_detail(match),
+        ))
+        evidence.append(RuleEvidence(
             "trendline_sequence",
             True,
             self._trendline_detail(match),
+        ))
+        evidence.append(RuleEvidence(
+            "trendline_zone_confluence",
+            True,
+            self._confluence_detail(latest, zone, match),
         ))
 
         mtf_alignment = self._multi_timeframe_confirms(context, direction)
@@ -136,24 +147,9 @@ class TrendlineZoneSequence(Strategy):
 
     def _find_direction_match(self, context: StrategyContext, candles: list[Candle], direction: Direction) -> SequenceMatch | None:
         swings = detect_swings(candles[:-1], window=1)
-        kind = "low" if direction == Direction.BUY else "high"
-        sequence = [swing for swing in swings if swing.kind == kind]
-        if len(sequence) < 2:
-            return None
-        swing_a, swing_b = sequence[-2], sequence[-1]
-        if direction == Direction.BUY and swing_b.candle.low <= swing_a.candle.low:
-            return None
-        if direction == Direction.SELL and swing_b.candle.high >= swing_a.candle.high:
-            return None
-
         latest_index = len(candles) - 1
-        latest_line = self._line_value(swing_a, swing_b, latest_index, direction)
         tolerance = self.config.trendline_proximity_pips * context.instrument.pip_size
         latest = candles[-1]
-        if direction == Direction.BUY and latest.close < latest_line - tolerance:
-            return None
-        if direction == Direction.SELL and latest.close > latest_line + tolerance:
-            return None
 
         zone_type = ZoneType.DEMAND if direction == Direction.BUY else ZoneType.SUPPLY
         zones = [
@@ -164,6 +160,20 @@ class TrendlineZoneSequence(Strategy):
         for zone in sorted(zones, key=lambda item: item.created_at, reverse=True):
             source_index = self._zone_source_index(candles, zone)
             if source_index is None:
+                continue
+            trendline_swings = self._trendline_swings_before_zone(swings, source_index, direction)
+            if trendline_swings is None:
+                continue
+            swing_a, swing_b = trendline_swings
+            structure_swings = [swing for swing in swings if swing.index < source_index]
+            if not self._market_structure_confirms(structure_swings, direction):
+                continue
+            latest_line = self._line_value(swing_a, swing_b, latest_index, direction)
+            if direction == Direction.BUY and latest.close < latest_line - tolerance:
+                continue
+            if direction == Direction.SELL and latest.close > latest_line + tolerance:
+                continue
+            if not self._touch_near_trendline(latest, latest_line, tolerance, direction):
                 continue
             line_at_zone = self._line_value(swing_a, swing_b, source_index, direction)
             if self._zone_near_trendline(zone, latest_line, tolerance, direction):
@@ -177,16 +187,48 @@ class TrendlineZoneSequence(Strategy):
                 )
         return None
 
+    def _trendline_swings_before_zone(self, swings: list[SwingPoint], source_index: int, direction: Direction) -> tuple[SwingPoint, SwingPoint] | None:
+        kind = "low" if direction == Direction.BUY else "high"
+        sequence = [swing for swing in swings if swing.kind == kind and swing.index < source_index]
+        if len(sequence) < 2:
+            return None
+        swing_a, swing_b = sequence[-2], sequence[-1]
+        if direction == Direction.BUY and swing_b.candle.low <= swing_a.candle.low:
+            return None
+        if direction == Direction.SELL and swing_b.candle.high >= swing_a.candle.high:
+            return None
+        return swing_a, swing_b
+
     def _line_value(self, swing_a: SwingPoint, swing_b: SwingPoint, index: int, direction: Direction) -> Decimal:
         first = swing_a.candle.low if direction == Direction.BUY else swing_a.candle.high
         second = swing_b.candle.low if direction == Direction.BUY else swing_b.candle.high
         slope = (second - first) / Decimal(swing_b.index - swing_a.index)
         return first + (slope * Decimal(index - swing_a.index))
 
+    def _market_structure_confirms(self, swings: list[SwingPoint], direction: Direction) -> bool:
+        if direction == Direction.BUY:
+            highs = [swing for swing in swings if swing.kind == "high"]
+            lows = [swing for swing in swings if swing.kind == "low"]
+            if len(highs) < 2 or len(lows) < 2:
+                return False
+            return highs[-1].candle.high > highs[-2].candle.high and lows[-1].candle.low > lows[-2].candle.low
+        highs = [swing for swing in swings if swing.kind == "high"]
+        if len(highs) < 2:
+            return False
+        lows = [swing for swing in swings if swing.kind == "low"]
+        if len(lows) < 2:
+            return False
+        return highs[-1].candle.high < highs[-2].candle.high and lows[-1].candle.low < lows[-2].candle.low
+
     def _zone_near_trendline(self, zone: Zone, line_value: Decimal, tolerance: Decimal, direction: Direction) -> bool:
         if direction == Direction.BUY:
             return zone.low - tolerance <= line_value <= zone.high + tolerance
         return zone.low - tolerance <= line_value <= zone.high + tolerance
+
+    def _touch_near_trendline(self, latest: Candle, line_value: Decimal, tolerance: Decimal, direction: Direction) -> bool:
+        if direction == Direction.BUY:
+            return latest.low <= line_value + tolerance and latest.close >= line_value - tolerance
+        return latest.high >= line_value - tolerance and latest.close <= line_value + tolerance
 
     def _is_first_touch(self, candles: list[Candle], zone: Zone) -> bool:
         source_index = self._zone_source_index(candles, zone)
@@ -240,6 +282,7 @@ class TrendlineZoneSequence(Strategy):
         return (
             is_bullish(departure)
             and candle_body(departure) >= candle_body(base) * self.config.min_departure_body_multiple
+            and body_to_range_ratio(departure) >= self.config.min_departure_body_to_range
             and departure.close > base.high
         )
 
@@ -247,6 +290,7 @@ class TrendlineZoneSequence(Strategy):
         return (
             is_bearish(departure)
             and candle_body(departure) >= candle_body(base) * self.config.min_departure_body_multiple
+            and body_to_range_ratio(departure) >= self.config.min_departure_body_to_range
             and departure.close < base.low
         )
 
@@ -304,6 +348,28 @@ class TrendlineZoneSequence(Strategy):
             "Supply in sequence below descending trendline; "
             f"swing highs at {match.swing_a.candle.high} then {match.swing_b.candle.high}; "
             f"line_at_zone={match.trendline_value_at_zone}, line_at_latest={match.trendline_value_at_latest}."
+        )
+
+    def _market_structure_detail(self, match: SequenceMatch) -> str:
+        if match.direction == Direction.BUY:
+            return (
+                "Bullish market structure confirmed with higher lows and higher highs before the demand-zone return; "
+                f"trendline swing lows={match.swing_a.candle.low}->{match.swing_b.candle.low}."
+            )
+        return (
+            "Bearish market structure confirmed with lower highs and lower lows before the supply-zone return; "
+            f"trendline swing highs={match.swing_a.candle.high}->{match.swing_b.candle.high}."
+        )
+
+    def _confluence_detail(self, latest: Candle, zone: Zone, match: SequenceMatch) -> str:
+        if match.direction == Direction.BUY:
+            return (
+                f"Demand zone={zone.low}-{zone.high} is close to ascending trendline at pullback; "
+                f"trendline={match.trendline_value_at_latest}, low={latest.low}, close={latest.close}."
+            )
+        return (
+            f"Supply zone={zone.low}-{zone.high} is close to descending trendline at pullback; "
+            f"trendline={match.trendline_value_at_latest}, high={latest.high}, close={latest.close}."
         )
 
     def _return_detail(self, latest: Candle, zone: Zone, direction: Direction) -> str:
